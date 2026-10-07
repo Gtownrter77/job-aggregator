@@ -1,5 +1,5 @@
 # --- personal data: NEVER commit ---
-resumes/
+resumes/raw/*DOCTYPE*
 config.local.yaml
 *.local.yaml
 scripts/build_profile.py
@@ -36,3 +36,10 @@ __pycache__/
 # --- OS ---
 .DS_Store
 Thumbs.db
+
+# --- installer artifacts (personal pack holds private data: NEVER commit) ---
+dist/
+personal-pack*.zip
+*.bak-*
+*.tmp-import
+install/generated/
