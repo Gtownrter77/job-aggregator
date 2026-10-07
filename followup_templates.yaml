@@ -1,0 +1,194 @@
+# Follow-up email building blocks (3 distinct touches, plain text).
+#
+# Each job gets its own combination: subject, body, humor line and sign-off are
+# picked independently (deterministically per job), and the body is filled with
+# details pulled from that posting. With 6 subjects x 6 bodies x 6+ humor lines
+# x 6 sign-offs per touch, two jobs essentially never read the same.
+# If a local Ollama model is available (llm.enabled), it writes the drafts
+# instead and these templates are the fallback.
+#
+# Placeholders:
+#   {greeting}        "Hi <contact name>," or "Hello <Company> team,"
+#   {name}            contact name (or followups.default_contact_name)
+#   {company} {title} {role}  (role = title cleaned of location/parentheses)
+#   {city}            first city in the posting location (e.g. Alpharetta)
+#   {detail}          posting-specific noun phrase, e.g.
+#                     the line in your posting about "helping families raise financially smart kids"
+#                     the posting's emphasis on patient care and scheduling
+#   {Detail}          same, capitalized (for sentence starts)
+#   {background}      sentence from applicant.headline, or an [[EDIT ...]] marker
+#   {value}           sentence from applicant.accomplishments / skill match, or an [[EDIT ...]] marker
+#   {humor}           a light, workplace-safe line (Atlanta-flavored when the job is in the metro)
+#   {signoff}         Best, / Thanks, / ...
+#   {applicant_name} {applicant_first}
+#
+# Drafts containing [[...]] markers cannot be approved until you replace them.
+
+greetings:
+  named: "Hi {name},"
+  team: "Hello {company} team,"
+
+signoffs: ["Best,", "Thanks so much,", "Warm regards,", "All the best,", "With thanks,", "Kind regards,"]
+
+# Never allowed in generated copy (checked for templates and LLM output).
+banned_phrases:
+  - "circling back"
+  - "circle back"
+  - "touching base"
+  - "touch base"
+  - "bumping this"
+  - "per my last email"
+  - "hope this email finds you well"
+  - "hope this finds you well"
+  - "just checking in"
+  - "synergy"
+  - "rockstar"
+  - "ninja"
+
+touches:
+  1:
+    angle: "Warm, confident intro that ties one specific detail from the posting to the applicant."
+    subjects:
+      - "Hello from your newest {role} applicant"
+      - "{role} application: a quick introduction"
+      - "Why {company} caught my eye"
+      - "Putting a name to my {role} application"
+      - "Excited about the {role} opening"
+      - "{applicant_first} here, re: {role} at {company}"
+    bodies:
+      - |
+        {greeting}
+
+        I just applied for the {role} role at {company} and wanted to say hello directly. What caught my eye was {detail}. {background}
+
+        I'd welcome a conversation about where I could help most.
+      - |
+        {greeting}
+
+        Quick introduction: I'm {applicant_first}, and my application for {role} just landed in your system. I read the posting twice, which is usually a good sign, and {detail} stood out both times. {background}
+
+        Happy to send anything that would make your review easier.
+      - |
+        {greeting}
+
+        I applied today for the {role} position and wanted to put a name to the application. Plenty of postings blur together, but {detail} made {company} stand out. {background}
+
+        I'd be glad to talk through how I could contribute from day one.
+      - |
+        {greeting}
+
+        Some job postings read like a parts list; yours read like a team I'd want to join. In particular, {detail} resonated with me. {background}
+
+        I've submitted my application for {role} and would love the chance to learn more.
+      - |
+        {greeting}
+
+        I'm reaching out because I just applied for {role} at {company}, and I'm genuinely excited about it. {Detail} is a big part of why. {background}
+
+        If a short call would be useful, I'm flexible on timing.
+      - |
+        {greeting}
+
+        Consider this the friendly cover note to my application for {role}. I was drawn to {company} by {detail}. {background}
+
+        Thanks for taking a look; I'd be glad to share more anytime.
+
+  2:
+    angle: "Friendly nudge that adds value (idea, skill match, or brief accomplishment) plus a light, clever line."
+    subjects:
+      - "A useful addition to my {role} application"
+      - "One more reason I'd fit at {company}"
+      - "Quick follow-up, with substance"
+      - "{role}: something worth adding"
+      - "A short note on how I'd help {company}"
+      - "Adding one detail to my application"
+    bodies:
+      - |
+        {greeting}
+
+        A quick follow-up on my {role} application, this time with something useful attached (figuratively). {value} {humor}
+
+        If it helps, I'm happy to walk through any of it on a short call.
+      - |
+        {greeting}
+
+        I wanted to add one thing to my application for {role}, since {detail} is still on my mind. {value} {humor}
+
+        Thanks again for considering me.
+      - |
+        {greeting}
+
+        Following up on {role} with a short note rather than a long one. {value} I think that would translate well to {company}. {humor}
+      - |
+        {greeting}
+
+        Since applying for {role}, I've kept thinking about {detail}. {value} I'd enjoy comparing notes on how {company} approaches it. {humor}
+      - |
+        {greeting}
+
+        A friendly nudge from the applicant pool, with a bit of substance this time. {value} {humor}
+
+        I'm still very interested and glad to share more whenever it suits you.
+      - |
+        {greeting}
+
+        I know your inbox is busy, so here's the short version of why I'd be a strong {role} for {company}. {value} {humor}
+
+        Happy to expand on any of it.
+    humor:
+      - "I promise this note is shorter than most onboarding checklists."
+      - "Think of it as the follow-up equivalent of a well-labeled spreadsheet: brief, tidy, and easy to file."
+      - "My coffee and I remain equally enthusiastic about this role."
+      - "Consider this a polite wave from somewhere in your inbox."
+      - "I'd call it persistence, but I prefer \"reliably enthusiastic.\""
+      - "No reply-all required; a single reply would make my week."
+    humor_atlanta:
+      - "Unlike the Connector at 5 p.m., this email should only take a minute to get through."
+      - "I'll keep this quicker than a MARTA ride from Five Points to Midtown."
+      - "Shorter than a Georgia spring pollen season, I promise."
+
+  3:
+    angle: "Gracious, witty last check-in that leaves the door open."
+    subjects:
+      - "A final note on {role}"
+      - "Last check-in from {applicant_first}"
+      - "Before I step back on {role}"
+      - "{company}: my last hello (for now)"
+      - "One last thank-you re: {role}"
+      - "Leaving the door open at {company}"
+    bodies:
+      - |
+        {greeting}
+
+        I'll keep this brief and make it my last note about the {role} role. If you've already found your person, congratulations to them; if not, I'm still very interested. Either way, I'd be glad to stay on {company}'s radar for future openings. {humor}
+      - |
+        {greeting}
+
+        This is my final check-in on {role}, I promise. {humor} If the timing isn't right, no hard feelings at all; I'd welcome hearing about future roles at {company}.
+      - |
+        {greeting}
+
+        Hiring takes as long as it takes, so this is simply a last friendly hello on {role}. I'm still a fan of {detail}, and my door stays open if anything changes. {humor}
+      - |
+        {greeting}
+
+        One last note before I gracefully step back from your inbox. I'm still enthusiastic about {role} at {company}, and if this one isn't a fit, I'd love to be considered for whatever comes next. {humor}
+      - |
+        {greeting}
+
+        I'm wrapping up my small series of emails with a thank-you. Whether {role} moves forward with me or not, I've enjoyed learning about {company}. If anything opens up down the road, I'd be glad to hear from you. {humor}
+      - |
+        {greeting}
+
+        Final note from me on {role}. I know priorities shift, so no reply needed unless there's news. I'd still love to help {company} with {detail}, now or later. {humor}
+    humor:
+      - "I'll now return your inbox to its regularly scheduled programming."
+      - "Consider this the email equivalent of a polite bow on the way out."
+      - "My follow-up trilogy ends here, with no sequel planned (unless you ask for one)."
+      - "I'll leave the porch light on, so to speak."
+      - "Three emails is a series; four would be a saga, so I'll stop here."
+      - "Thanks for being a good sport about my three-part series."
+    humor_atlanta:
+      - "I'll exit more gracefully than anyone merging onto 285."
+      - "Like a good peach cobbler, the right fit is worth a little patience."
+      - "Consider me the sweet tea of candidates: patient, steady, and still here if you need me."

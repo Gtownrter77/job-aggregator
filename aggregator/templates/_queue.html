@@ -1,0 +1,64 @@
+{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+{% macro item(f, open) %}
+<div class="card {{ f.status }}">
+  <div class="row">
+    <span class="pill {{ f.status }}">{{ f.status }}</span>
+    <b>Touch {{ f.touch }}/3</b>
+    <span class="muted">scheduled {{ f.scheduled_for }}</span>
+    <span>·</span>
+    <a href="{{ f.url }}" target="_blank" rel="noopener">{{ f.title }}</a> <span class="muted">at {{ f.company }} — {{ f.location }}</span>
+  </div>
+  <div class="row muted" style="margin-top:4px">
+    To: {% if f.contact_email %}{{ f.contact_name or '' }} &lt;{{ f.contact_email }}&gt;
+        {% if f.contact_source == 'posting' %}<span class="pill">from posting text</span>{% endif %}
+    {% else %}<span class="needs">needs contact</span>{% endif %}
+  </div>
+  {% if open %}
+  <form class="contact" hx-post="/leads/{{ f.job_id }}/contact" hx-target="#queue">
+    <input name="contact_name" value="{{ f.contact_name or '' }}" placeholder="Contact name (optional)">
+    <input name="contact_email" value="{{ f.contact_email or '' }}" placeholder="Recruiter / hiring email (only if known)">
+    <button>Save contact</button>
+  </form>
+  <form hx-target="#queue">
+    <input name="subject" value="{{ f.subject }}" style="margin-bottom:6px">
+    <textarea name="body">{{ f.body }}</textarea>
+    <div class="row" style="margin-top:6px">
+      <button hx-post="/followups/{{ f.id }}/save">Save edits</button>
+      {% if f.status == 'draft' %}
+        <button class="primary" hx-post="/followups/{{ f.id }}/approve" {% if not f.contact_email %}disabled title="Add a contact email first"{% endif %}>Approve</button>
+      {% else %}
+        <button hx-post="/followups/{{ f.id }}/unapprove">Back to draft</button>
+      {% endif %}
+      <button hx-post="/followups/{{ f.id }}/skip">Skip</button>
+      <button class="warn" hx-post="/leads/{{ f.job_id }}/replied" hx-confirm="Mark replied? This stops all remaining touches for this job.">Mark replied</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endmacro %}
+
+<h2>Due today or overdue ({{ qd.due|length }}) <span class="muted">— today is {{ qd.today }}</span></h2>
+{% for f in qd.due %}{{ item(f, true) }}{% else %}<p class="muted">Nothing due. Qualify jobs from the <a href="/">Jobs</a> page to generate drafts.</p>{% endfor %}
+
+<h2>Upcoming ({{ qd.upcoming|length }})</h2>
+<table>
+  <tr><th>Date</th><th>Touch</th><th>Status</th><th>Job</th><th>Contact</th><th></th></tr>
+  {% for f in qd.upcoming %}
+  <tr>
+    <td>{{ f.scheduled_for }}</td><td>{{ f.touch }}/3</td><td><span class="pill {{ f.status }}">{{ f.status }}</span></td>
+    <td><a href="{{ f.url }}" target="_blank" rel="noopener">{{ f.title }}</a> <span class="muted">· {{ f.company }}</span></td>
+    <td>{% if f.contact_email %}{{ f.contact_email }}{% else %}<span class="needs">needs contact</span>{% endif %}</td>
+    <td><button hx-post="/followups/{{ f.id }}/skip" hx-target="#queue">Skip</button>
+        <button class="warn" hx-post="/leads/{{ f.job_id }}/replied" hx-target="#queue" hx-confirm="Mark replied? Stops remaining touches.">Replied</button></td>
+  </tr>
+  {% else %}<tr><td colspan="6" class="muted">None.</td></tr>{% endfor %}
+</table>
+
+<h2>History ({{ qd.done|length }})</h2>
+<table>
+  <tr><th>Date</th><th>Touch</th><th>Status</th><th>Job</th><th>Updated</th></tr>
+  {% for f in qd.done %}
+  <tr><td>{{ f.scheduled_for }}</td><td>{{ f.touch }}/3</td><td><span class="pill {{ f.status }}">{{ f.status }}</span></td>
+      <td>{{ f.title }} <span class="muted">· {{ f.company }}</span></td><td class="muted">{{ f.updated_at[:16].replace('T',' ') }}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">None yet.</td></tr>{% endfor %}
+</table>

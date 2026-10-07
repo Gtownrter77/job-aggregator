@@ -1,0 +1,50 @@
+# Seed list of company job boards on public, no-auth ATS APIs.
+# Every slug below returned HTTP 200 when verified with
+#   python -m aggregator verify-slugs
+# Add a company: find its careers page URL, e.g.
+#   https://job-boards.greenhouse.io/<slug>   -> greenhouse
+#   https://jobs.lever.co/<slug>              -> lever
+#   https://jobs.ashbyhq.com/<slug>           -> ashby
+# then add {slug, name} under the matching key and re-run verify-slugs.
+# `atl: true` marks employers headquartered in / hiring heavily in Atlanta.
+
+greenhouse:
+  - {slug: onetrust, name: OneTrust, atl: true}
+  - {slug: florencehealthcare, name: Florence Healthcare, atl: true}
+  - {slug: qgenda, name: QGenda, atl: true}
+  - {slug: agilysys, name: Agilysys, atl: true}
+  - {slug: relaypayments, name: Relay Payments, atl: true}
+  - {slug: calendly, name: Calendly, atl: true}
+  - {slug: salesloft, name: Salesloft, atl: true}
+  - {slug: pindropsecurity, name: Pindrop, atl: true}
+  - {slug: goodr, name: Goodr, atl: true}
+  - {slug: carvana, name: Carvana, atl: true}
+  - {slug: pagerduty, name: PagerDuty, atl: true}
+  - {slug: oscar, name: Oscar Health, atl: true}
+  - {slug: gusto, name: Gusto, atl: true}
+  - {slug: stripe, name: Stripe, atl: true}
+  - {slug: databricks, name: Databricks}
+  - {slug: toast, name: Toast}
+  - {slug: datadog, name: Datadog}
+  - {slug: mongodb, name: MongoDB}
+  - {slug: samsara, name: Samsara}
+  - {slug: okta, name: Okta}
+  - {slug: roofstock, name: Roofstock}
+  - {slug: elastic, name: Elastic}
+  - {slug: pinterest, name: Pinterest}
+  - {slug: huntress, name: Huntress}
+  - {slug: airbnb, name: Airbnb}
+
+lever:
+  - {slug: greenlight, name: Greenlight, atl: true}
+  - {slug: lessen, name: Lessen, atl: true}
+  - {slug: truv, name: Truv, atl: true}
+  - {slug: aledade, name: Aledade}
+  - {slug: palantir, name: Palantir}
+
+ashby:
+  - {slug: fullstory, name: FullStory, atl: true}
+  - {slug: zip, name: Zip}
+  - {slug: ramp, name: Ramp}
+  - {slug: notion, name: Notion}
+  - {slug: plaid, name: Plaid}

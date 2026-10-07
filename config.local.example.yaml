@@ -1,0 +1,14 @@
+# Copy to config.local.yaml (gitignored) and fill in YOUR details.
+# It is merged on top of config.yaml, so only list the keys you want to change.
+
+followups:
+  applicant_name: "Your Name"
+  applicant_phone: "555-555-5555"
+  applicant_email: "you@example.com"
+
+applicant:
+  headline: "a project coordinator with 10 years in operations and customer service"
+  skills: ["project management", "scheduling", "customer service"]
+
+# metro:
+#   extra_towns: ["Your Town"]   # appended to metro.towns

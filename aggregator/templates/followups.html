@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Follow-ups · Job Aggregator</title>
+<script src="/static/htmx.min.js"></script>
+<style>
+  :root { --bg:#f7f7f8; --card:#fff; --ink:#1b1b1f; --muted:#6b6b76; --line:#e4e4e9; --acc:#2952cc; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:#111827; color:#fff; padding:14px 22px; display:flex; gap:18px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  nav a.nav { color:#c7c9d1; text-decoration:none; margin-right:12px; font-size:13.5px; }
+  nav a.nav.on, nav a.nav:hover { color:#fff; }
+  main { padding:16px 22px; max-width:1100px; margin:0 auto; }
+  .safety { background:#fff8e6; border:1px solid #f1d58a; color:#6b4e00; padding:10px 12px; border-radius:8px; font-size:13px; }
+  .msg { background:#eef1fb; border:1px solid #cdd6f5; padding:8px 12px; border-radius:8px; margin:10px 0; }
+  h2 { font-size:15px; margin:22px 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+  .card.approved { border-color:#9fd6b0; box-shadow: inset 4px 0 0 #2e9b57; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .muted { color:var(--muted); font-size:12.5px; }
+  .pill { font-size:11px; padding:1px 7px; border-radius:99px; background:#f0f0f3; }
+  .pill.draft { background:#eef1fb; color:#26357a; } .pill.approved { background:#e7f6ec; color:#1b6b38; }
+  .pill.sent { background:#e6f0ff; } .pill.skipped { background:#f3f3f3; color:#777; } .pill.replied { background:#fdeef3; color:#8a1c46; }
+  .needs { background:#ffe9e6; color:#9b2a17; font-size:11.5px; padding:1px 7px; border-radius:99px; }
+  input, textarea { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px; width:100%; }
+  textarea { min-height:150px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; }
+  button { font:inherit; font-size:12.5px; padding:5px 11px; border:1px solid var(--line); border-radius:7px; background:#fff; cursor:pointer; }
+  button.primary { background:#2e9b57; color:#fff; border-color:#2e9b57; }
+  button.warn { color:#8a1c46; }
+  form.contact { display:grid; grid-template-columns: 1fr 1.4fr auto; gap:6px; margin:8px 0; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); }
+  th, td { text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); font-size:13px; }
+  a { color:var(--acc); }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/" style="color:#fff;text-decoration:none">Job Aggregator</a></h1>
+  <nav><a href="/" class="nav">Jobs</a> <a href="/followups" class="nav on">Follow-ups</a></nav>
+</header>
+<main>
+  <div class="safety"><b>Nothing is sent from this page.</b> Approving only marks a draft as allowed to send.
+    Emails go out only when you explicitly run <code>python -m aggregator send-approved</code>, with
+    <code>followups.sending_enabled: true</code> and SMTP env vars set.</div>
+  <div id="queue">{% include "_queue.html" %}</div>
+</main>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<p class="muted">{{ res.total }} matching job{{ '' if res.total == 1 else 's' }}{% if res.total %} · page {{ res.page }} of {{ res.pages }}{% endif %}
+{% if p.sort == 'score' and not p.q %} · <em>tip: type a search to rank by TF-IDF relevance (stored score = match to your resume profile)</em>{% endif %}</p>
+<table>
+  <thead><tr><th style="width:34%">Title</th><th>Company</th><th>Location</th><th>Salary</th><th>Posted</th><th>Source</th><th>Score</th><th>Lead</th></tr></thead>
+  <tbody>
+  {% for r in res.rows %}
+    <tr>
+      <td class="title"><a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.title }}</a>
+        {% if r.remote %}<span class="remote">remote</span>{% endif %}
+        {% for t in (r.track or '').split(',') if t %}<span class="trk">{{ {'atlanta':'ATL','remote_ai':'AI remote'}.get(t, t) }}</span>{% endfor %}
+        {% if r.job_type %}<div class="muted">{{ r.job_type | replace('_',' ') | lower }}</div>{% endif %}</td>
+      <td>{{ r.company }}</td>
+      <td>{{ r.location }}{% if r.remote and r.remote_region %}<div class="rgn">remote: {{ r.remote_region }}</div>{% endif %}</td>
+      <td>{{ r.salary }}</td>
+      <td class="muted">{{ r.posted }}</td>
+      <td>{% for s in (r.seen_on or r.source).split(',') %}<span class="src {{ 'ats' if s in ['greenhouse','lever','ashby'] }}">{{ s }}</span> {% endfor %}</td>
+      <td class="muted">{{ '%.3f' % r.rel if r.rel else '' }}</td>
+      <td>{% if r.qualified %}<button class="qbtn on" hx-post="/jobs/{{ r.id }}/unqualify" hx-swap="outerHTML" title="Qualified: 3 follow-up drafts queued. Click to un-qualify (skips unsent drafts).">✓ Qualified</button>{% else %}<button class="qbtn" hx-post="/jobs/{{ r.id }}/qualify" hx-swap="outerHTML" title="Mark qualified and generate 3 follow-up drafts (nothing is sent)">Qualify</button>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">No jobs match. Loosen the filters or run <code>python -m aggregator fetch</code>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if res.pages > 1 %}
+<div class="pager">
+  {% set base = 'q=' ~ (p.q|urlencode) ~ '&track=' ~ p.track ~ '&region=' ~ (p.region|urlencode) ~ '&source=' ~ p.source ~ '&remote=' ~ p.remote ~ '&company=' ~ (p.company|urlencode) ~ '&location=' ~ (p.location|urlencode) ~ '&days=' ~ p.days ~ '&sort=' ~ p.sort ~ ('&salary_only=true' if p.salary_only else '') %}
+  {% if res.page > 1 %}<button hx-get="/search?{{ base }}&page={{ res.page - 1 }}" hx-target="#results" hx-push-url="/?{{ base }}&page={{ res.page - 1 }}">← Prev</button>{% endif %}
+  <span class="muted">Page {{ res.page }} / {{ res.pages }}</span>
+  {% if res.page < res.pages %}<button hx-get="/search?{{ base }}&page={{ res.page + 1 }}" hx-target="#results" hx-push-url="/?{{ base }}&page={{ res.page + 1 }}">Next →</button>{% endif %}
+</div>
+{% endif %}

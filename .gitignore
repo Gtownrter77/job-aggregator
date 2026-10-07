@@ -1,0 +1,38 @@
+# --- personal data: NEVER commit ---
+resumes/
+config.local.yaml
+*.local.yaml
+scripts/build_profile.py
+docs/ui-followups.png
+
+# --- databases / fetched data ---
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# --- secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- logs / runtime ---
+logs/
+*.log
+*.pid
+
+# --- python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- OS ---
+.DS_Store
+Thumbs.db

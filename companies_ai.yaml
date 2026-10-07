@@ -1,0 +1,71 @@
+# AI-company job boards for the `remote_ai` track (public, no-auth ATS APIs).
+# Every slug returned HTTP 200 with live postings, and the board was checked to be
+# the right company (2026-10-07). Only REMOTE postings are kept from these boards,
+# but every remote role counts (sales, support, ops, recruiting, data annotation...),
+# not just ML engineering. Verify with: python -m aggregator verify-slugs --track remote_ai
+
+greenhouse:
+  - {slug: anthropic, name: Anthropic}
+  - {slug: labelbox, name: Labelbox}
+  - {slug: snorkelai, name: Snorkel AI}
+  - {slug: gleanwork, name: Glean}
+  - {slug: assemblyai, name: AssemblyAI}
+  - {slug: togetherai, name: Together AI}
+  - {slug: dataiku, name: Dataiku}
+  - {slug: invisibletech, name: Invisible Technologies}
+  - {slug: turing, name: Turing}
+  - {slug: stabilityai, name: Stability AI}
+  - {slug: coreweave, name: CoreWeave}
+  - {slug: observeai, name: Observe.AI}
+  - {slug: pathai, name: PathAI}
+  - {slug: descript, name: Descript}
+  - {slug: otterai, name: Otter.ai}
+  - {slug: typeface, name: Typeface}
+  - {slug: heygen, name: HeyGen}
+  - {slug: cresta, name: Cresta}
+  - {slug: arizeai, name: Arize AI}
+  - {slug: humeai, name: Hume AI}
+  - {slug: prolific, name: Prolific}
+
+lever:
+  - {slug: appen, name: Appen}
+  - {slug: zilliz, name: Zilliz}
+
+ashby:
+  - {slug: openai, name: OpenAI}
+  - {slug: cohere, name: Cohere}
+  - {slug: perplexity, name: Perplexity}
+  - {slug: elevenlabs, name: ElevenLabs}
+  - {slug: writer, name: Writer}
+  - {slug: harvey, name: Harvey}
+  - {slug: sierra, name: Sierra}
+  - {slug: decagon, name: Decagon}
+  - {slug: character, name: Character.AI}
+  - {slug: synthesia, name: Synthesia}
+  - {slug: deepgram, name: Deepgram}
+  - {slug: modal, name: Modal}
+  - {slug: pinecone, name: Pinecone}
+  - {slug: weaviate, name: Weaviate}
+  - {slug: langchain, name: LangChain}
+  - {slug: llamaindex, name: LlamaIndex}
+  - {slug: anyscale, name: Anyscale}
+  - {slug: mercor, name: Mercor}
+  - {slug: handshake, name: Handshake}
+  - {slug: deepl, name: DeepL}
+  - {slug: lovable, name: Lovable}
+  - {slug: cursor, name: Cursor (Anysphere)}
+  - {slug: replit, name: Replit}
+  - {slug: poolside, name: Poolside}
+  - {slug: cerebras, name: Cerebras}
+  - {slug: lambda, name: Lambda}
+  - {slug: claylabs, name: Clay}
+  - {slug: abridge, name: Abridge}
+  - {slug: vapi, name: Vapi}
+  - {slug: elicit, name: Elicit}
+  - {slug: suno, name: Suno}
+  - {slug: pika, name: Pika}
+  - {slug: braintrust, name: Braintrust}
+  - {slug: baseten, name: Baseten}
+  - {slug: reka, name: Reka AI}
+  - {slug: unstructured, name: Unstructured}
+  - {slug: rasa, name: Rasa}

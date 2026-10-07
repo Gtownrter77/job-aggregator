@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Aggregator · {{ cfg.search.location }}</title>
+<script src="/static/htmx.min.js"></script>
+<style>
+  :root { --bg:#f7f7f8; --card:#fff; --ink:#1b1b1f; --muted:#6b6b76; --line:#e4e4e9; --acc:#2952cc; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:#111827; color:#fff; padding:14px 22px; display:flex; gap:18px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  header .meta { color:#c7c9d1; font-size:12.5px; }
+  main { padding:16px 22px; max-width:1400px; margin:0 auto; }
+  form.filters { display:grid; grid-template-columns: 2.2fr 1fr 1fr 1.2fr 1.2fr .9fr .9fr auto; gap:8px; background:var(--card);
+                 padding:12px; border:1px solid var(--line); border-radius:10px; align-items:end; }
+  label { display:flex; flex-direction:column; font-size:11.5px; color:var(--muted); gap:3px; }
+  input, select { font:inherit; padding:7px 8px; border:1px solid var(--line); border-radius:7px; background:#fff; }
+  label.chk { flex-direction:row; align-items:center; gap:6px; font-size:12.5px; color:var(--ink); padding-bottom:8px; }
+  .chips { margin:10px 0 2px; display:flex; gap:6px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+  .trk { font-size:10.5px; padding:1px 6px; border-radius:99px; background:#f2ecff; color:#5a2ea6; margin-left:4px; white-space:nowrap; }
+  .rgn { font-size:11px; color:#0f6a4a; }
+  .chip { background:#eef1fb; color:#26357a; padding:2px 8px; border-radius:99px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-top:10px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:#fafafb; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+  td.title a { color:var(--acc); font-weight:600; text-decoration:none; }
+  td.title a:hover { text-decoration:underline; }
+  .src { font-size:11px; padding:1px 6px; border-radius:5px; background:#f0f0f3; color:#444; white-space:nowrap; }
+  .src.ats { background:#e7f6ec; color:#1b6b38; }
+  .remote { font-size:11px; padding:1px 6px; border-radius:5px; background:#fff1d6; color:#8a5a00; margin-left:4px; }
+  .muted { color:var(--muted); font-size:12.5px; }
+  .pager { display:flex; gap:10px; align-items:center; margin:12px 0; }
+  .pager button { font:inherit; padding:6px 12px; border:1px solid var(--line); border-radius:7px; background:#fff; cursor:pointer; }
+  .htmx-request #results { opacity:.55; transition:opacity .15s; }
+  nav a.nav { color:#c7c9d1; text-decoration:none; margin-right:12px; font-size:13.5px; }
+  nav a.nav.on, nav a.nav:hover { color:#fff; }
+  .qbtn { font:inherit; font-size:12px; padding:3px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; cursor:pointer; white-space:nowrap; }
+  .qbtn.on { background:#e7f6ec; color:#1b6b38; border-color:#bfe5cb; }
+  @media (max-width: 1000px) { form.filters { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/" style="color:#fff;text-decoration:none">Job Aggregator</a></h1>
+  <nav><a href="/" class="nav on">Jobs</a> <a href="/followups" class="nav">Follow-ups</a></nav>
+  <span class="meta">Tracks: {{ cfg.search.location }} {{ cfg.search.distance_miles }} mi + remote AI anywhere · {{ f.total }} jobs in DB
+  {% if f.last_run %} · last fetch {{ f.last_run.started_at[:16].replace('T',' ') }} UTC ({{ f.last_run.unique_this_run }} unique){% endif %}</span>
+</header>
+<main>
+<form class="filters" hx-get="/search" hx-target="#results" hx-push-url="true"
+      hx-trigger="input changed delay:350ms from:input[type=search], change, submit" onsubmit="return false">
+  <label>Search (title, company, description)
+    <input type="search" name="q" value="{{ p.q }}" placeholder="e.g. nurse, python, warehouse forklift" autofocus></label>
+  <label>Track
+    <select name="track"><option value="">All tracks</option>
+      {% for t, n in f.tracks %}<option value="{{ t }}" {% if p.track == t %}selected{% endif %}>{{ {'atlanta':'Atlanta 50 mi','remote_ai':'Remote AI (anywhere)'}[t] }} ({{ n }})</option>{% endfor %}
+    </select></label>
+  <label>Remote region
+    <select name="region"><option value="">Any</option>
+      {% for r, n in f.regions %}<option value="{{ r }}" {% if p.region == r %}selected{% endif %}>{{ r }} ({{ n }})</option>{% endfor %}
+    </select></label>
+  <label>Source
+    <select name="source"><option value="">All sources</option>
+      {% for s, n in f.sources %}<option value="{{ s }}" {% if p.source == s %}selected{% endif %}>{{ s }} ({{ n }})</option>{% endfor %}
+    </select></label>
+  <label>Remote
+    <select name="remote">
+      <option value="" {% if not p.remote %}selected{% endif %}>Any</option>
+      <option value="1" {% if p.remote == '1' %}selected{% endif %}>Remote only</option>
+      <option value="0" {% if p.remote == '0' %}selected{% endif %}>On-site / hybrid</option>
+    </select></label>
+  <label>Company
+    <input type="search" name="company" value="{{ p.company }}" list="companies" placeholder="any"></label>
+  <datalist id="companies">{% for c in f.companies %}<option value="{{ c }}">{% endfor %}</datalist>
+  <label>Location
+    <input type="search" name="location" value="{{ p.location }}" placeholder="e.g. Alpharetta"></label>
+  <label>Posted
+    <select name="days">
+      {% for d, lbl in [(0,'Any time'),(1,'24 hours'),(3,'3 days'),(7,'7 days'),(30,'30 days')] %}
+      <option value="{{ d }}" {% if p.days == d %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+    </select></label>
+  <label>Sort
+    <select name="sort">
+      {% for v, lbl in [('date','Newest'),('score','Relevance / score'),('salary','Salary'),('company','Company')] %}
+      <option value="{{ v }}" {% if p.sort == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+    </select></label>
+  <label class="chk"><input type="checkbox" name="salary_only" value="true" {% if p.salary_only %}checked{% endif %}> has salary</label>
+</form>
+<div class="chips">
+  {% for s, n in f.sources %}<span class="chip">{{ s }}: {{ n }}</span>{% endfor %}
+</div>
+<div id="results">{% include "_results.html" %}</div>
+</main>
+</body>
+</html>

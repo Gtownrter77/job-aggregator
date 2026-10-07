@@ -1,0 +1,243 @@
+# ---------------------------------------------------------------------------
+# Job aggregator configuration. Edit freely; every key has a sane default.
+# ---------------------------------------------------------------------------
+
+search:
+  # Where to look. JobSpy passes these straight to the job boards.
+  location: "Atlanta, GA"
+  distance_miles: 50
+
+  # Role filter. EMPTY LIST = keep ALL job types (current default).
+  # Example: roles: ["software engineer", "product manager", "data analyst"]
+  # A posting is kept if its title contains any role (case-insensitive).
+  # When roles are set, they also become the JobSpy search terms.
+  roles: []
+
+  # Drop postings whose TITLE contains any of these (case-insensitive).
+  # Example: exclude_keywords: ["intern", "senior director", "clearance"]
+  exclude_keywords: []
+
+  remote_only: false      # true = keep only remote postings
+  include_remote: false   # ATS sources: also keep remote postings outside Atlanta metro
+  hours_old: 168          # JobSpy: only postings from the last N hours (7 days)
+
+jobspy:
+  enabled: true
+  # Toggle each board independently. A failing board is logged and skipped.
+  sites:
+    indeed: true
+    linkedin: true
+    google: true
+    zip_recruiter: true
+    glassdoor: true
+  # Used only when search.roles is empty (no role filter): several broad
+  # queries so "all job types" still returns plenty of results.
+  search_terms:
+    - "full time"
+    - "part time"
+    - "manager"
+    - "sales"
+    - "customer service"
+    - "engineer"
+    - "nurse"
+    - "analyst"
+    - "driver"
+    - "warehouse"
+    - "administrative assistant"
+    - "technician"
+  results_wanted: 40          # per site, per search term
+  country_indeed: "usa"
+  linkedin_fetch_description: false   # true = slower, more LinkedIn requests
+  fetch_description: false            # true = also fetch full descriptions for Glassdoor/ZipRecruiter (slower)
+  max_consecutive_failures: 2         # stop hitting a site after N failures in a row
+  apply_metro_filter: false           # boards already filter by distance; true = also require an Atlanta-metro town
+  proxies: []                         # optional, e.g. ["user:pass@host:port"]
+
+ats:
+  enabled: true
+  companies_file: "companies.yaml"
+  concurrency: 8
+  timeout_seconds: 45
+
+# Atlanta metro matcher used for ATS postings (and JobSpy if apply_metro_filter).
+metro:
+  name: "Atlanta metro (~50 mi)"
+  # Unambiguous town names: matched anywhere in the location string.
+  towns:
+    - Atlanta
+    - Alpharetta
+    - Sandy Springs
+    - Kennesaw
+    - Lawrenceville
+    - Peachtree City
+    - Peachtree Corners
+    - Smyrna
+    - Dunwoody
+    - Norcross
+    - Johns Creek
+    - Buford
+    - Douglasville
+    - McDonough
+    - Suwanee
+    - Brookhaven
+    - Chamblee
+    - Doraville
+    - Tucker
+    - Stone Mountain
+    - Lithonia
+    - Conyers
+    - Snellville
+    - Lilburn
+    - Loganville
+    - Woodstock
+    - Acworth
+    - Cartersville
+    - Newnan
+    - Stockbridge
+    - Jonesboro
+    - College Park
+    - East Point
+    - Hapeville
+    - Union City
+    - Fairburn
+    - Austell
+    - Mableton
+    - Vinings
+    - Locust Grove
+    - Flowery Branch
+    - Braselton
+    - Dawsonville
+    - Cumming
+    - Villa Rica
+    - Hiram
+    - Tyrone
+    - Forest Park
+    - Morrow
+    - Riverdale
+    - Fayetteville, GA
+  # Town names that also exist in other states: only matched with GA/Georgia nearby.
+  towns_require_state:
+    - Marietta
+    - Decatur
+    - Roswell
+    - Duluth
+    - Gainesville
+    - Milton
+    - Canton
+    - Covington
+    - Griffin
+    - Monroe
+    - Winder
+    - Hampton
+    - Dallas
+    - Carrollton
+    - Oakwood
+    - Palmetto
+  state_tokens: ["GA", "Georgia"]
+
+# ---------------------------------------------------------------------------
+# Search tracks. Every job is tagged with the track(s) it matched (jobs.track),
+# and the UI has a Track filter. `fetch --track remote_ai` runs only one track.
+#   atlanta   : ALL job types within 50 mi of Atlanta (the search/jobspy/ats/metro
+#               settings above).
+#   remote_ai : remote AI / ML / automation jobs located ANYWHERE (US-remote,
+#               worldwide, EU, any country). Each job gets a `remote_region`
+#               (US, Worldwide, Europe, UK, Canada, LATAM, APAC, ...) when the
+#               posting states one, else "Unspecified".
+# ---------------------------------------------------------------------------
+tracks:
+  atlanta:
+    enabled: true
+  remote_ai:
+    enabled: true
+    remote_only: true
+    # AI-company boards: every REMOTE posting is kept (sales, support, ops, data
+    # annotation, recruiting... not just ML engineering).
+    companies_file: companies_ai.yaml
+    # also keep remote postings with an AI keyword in the title from companies.yaml boards
+    scan_main_companies: true
+    # A posting from a non-AI company (companies.yaml boards, JobSpy results) is
+    # AI-related if its TITLE has one of these. description_min_hits > 0 also accepts
+    # postings whose description mentions them that often (noisy: most companies'
+    # boilerplate now says "AI", so it is off by default).
+    # Short ALL-CAPS words (AI, ML, LLM, NLP) match case-sensitively.
+    keywords: ["AI", "ML", "LLM", "LLMs", "NLP", "GenAI", "machine learning", "artificial intelligence",
+               "generative", "prompt engineer", "prompt engineering", "AI operations", "AI trainer", "AI tutor",
+               "data annotation", "data annotator", "data labeling", "annotation", "RLHF", "model evaluation",
+               "AI product", "automation", "intelligent automation", "AI solutions", "conversational",
+               "chatbot", "AI agent", "agentic", "computer vision", "deep learning", "data scientist"]
+    description_min_hits: 0
+    jobspy:
+      # Glassdoor needs a city and Google is blocked (see README); ZipRecruiter is US/Canada.
+      sites: {indeed: true, linkedin: true, zip_recruiter: true, glassdoor: false, google: false}
+      # Indeed is per-country (country_indeed); LinkedIn "Worldwide" covers every country.
+      locations: {indeed: "United States", linkedin: "Worldwide", zip_recruiter: "United States"}
+      search_terms: ["artificial intelligence", "machine learning", "LLM", "prompt engineer", "AI operations",
+                     "AI trainer", "data annotation", "AI product manager", "automation specialist",
+                     "AI solutions", "AI sales", "AI customer success", "AI entry level"]
+      results_wanted: 25
+      hours_old: 168
+
+scoring:
+  # tfidf (default, always available) or embeddings (needs
+  # `pip install sentence-transformers`; falls back to tfidf if missing).
+  method: tfidf
+  # Free-text description of what you want. Used for the stored relevance
+  # score shown in the UI. Leave empty to rank by search-box query instead.
+  profile: ""
+  # Resume-derived text used for the stored relevance score (resume <-> posting TF-IDF).
+  resume_file: "resumes/profile_text.txt"
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+
+llm:
+  # Optional structured extraction via a LOCAL Ollama server (free, open source).
+  # Skipped automatically when Ollama isn't reachable.
+  enabled: false
+  ollama_url: "http://localhost:11434"
+  model: "llama3.1:8b"
+  max_jobs_per_run: 50
+
+database:
+  # SQLite for v1. Schema is plain SQL kept Postgres-portable.
+  path: "data/jobs.db"
+
+server:
+  host: "0.0.0.0"
+  port: 8765
+
+followups:
+  # 3-touch follow-up DRAFT queue for qualified jobs. Nothing is ever sent
+  # automatically: drafts must be approved in the UI and then sent with an
+  # explicit `python -m aggregator send-approved` (which also requires
+  # sending_enabled: true AND SMTP_* env vars).
+  # Put your REAL name/phone/email in config.local.yaml (gitignored), not here.
+  applicant_name: "Your Name"           # fills {applicant_name}; first line of the signature
+  applicant_phone: "555-555-5555"       # signature line 2 (leave "" to omit)
+  applicant_email: "you@example.com"    # signature line 3 (leave "" to omit)
+  use_llm: true                         # use local Ollama (if llm.enabled & reachable) to write drafts; else rich templates
+  default_contact_name: "Hiring Team"   # fills {name} when no contact name is known
+  schedule_days: [0, 3, 10]             # touch 1/2/3 offsets (days) from the qualify date
+  skip_weekends: true                   # a Sat/Sun date moves to Monday (so Day 3 can become Day 4-5)
+  templates_file: "followup_templates.yaml"
+  # Auto-qualify jobs whose stored score >= this after each fetch. null = manual only.
+  # (Scores are 0 unless scoring.profile is set.)
+  auto_qualify_score: null
+  # Prefill a lead's contact email ONLY when an address is written in the posting
+  # text itself (e.g. "send resumes to jobs@acme.com"). Never guessed or scraped elsewhere.
+  contact_from_posting: true
+  sending_enabled: false                # master switch for send-approved
+
+# Facts about YOU, used to personalize follow-up drafts and to score jobs.
+# Override these in config.local.yaml (gitignored). resumes/ is gitignored too:
+# put your own resume-derived profile there (see README "Resume profile").
+# Items marked "confirm" in profile.json are never used in drafts.
+applicant:
+  # completes the sentence "I'm ..."
+  headline: "a project coordinator with 10 years in operations and customer service"
+  # accomplishments are read from this file (items with a `use` sentence and no `confirm` flag);
+  # the one that best matches each posting is used in touch 2.
+  profile_file: "resumes/profile.json"
+  # skills matched against each posting's text (all from the resumes)
+  skills: ["project management", "scheduling", "customer service", "sales", "Excel"]
+  # optional extra, true accomplishments (past tense, completes "I ..."); merged with the profile file
+  accomplishments: []
