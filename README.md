@@ -28,6 +28,57 @@ India, EMEA, Australia/NZ, Middle East/Africa, combinations like "US, Canada", o
 
 ![Jobs list](docs/ui-jobs-atlanta.png)
 
+## Install on your own computer (one command)
+
+Everything runs on your own Windows PC, Mac or Linux computer. It's all free and open
+source: no paid APIs, no tokens. The installer sets up Python, the app, and the local AI
+(Ollama with the `llama3.2:3b` model). It schedules the job check for weekdays at
+**7:19, 11:19 and 16:19** and also at login (if the computer was off, the missed run
+happens then), keeps the web page running at **http://localhost:8765**, and puts a
+shortcut on your Desktop. It never sends email; follow-ups are drafts you approve yourself.
+
+**1. Download the app.** Either:
+* click **Code → Download ZIP** on https://github.com/Gtownrter77/job-aggregator and unzip
+  it (you get a folder like `job-aggregator-main`), or
+* if you use git: `git clone https://github.com/Gtownrter77/job-aggregator.git`.
+
+**2. Bring your personal pack (optional, recommended).** On the computer that already has
+your setup, run `python install/make_personal_pack.py`. That makes `dist/personal-pack.zip`,
+which holds your private settings (`config.local.yaml`) and your saved jobs, leads and drafts
+(`data/jobs.db`). The resume profile already comes with the repo (`resumes/`). Copy
+it to the new computer and put it **next to the app folder** or in **Downloads**. Keep it
+private: it holds your contact details. Without a pack the app still installs; you then fill
+in `config.local.yaml` yourself.
+
+**3. Run one command.**
+
+| Computer | What to do |
+|---|---|
+| **Windows 10/11** | Open the app folder, go into `install`, and **double-click `install.bat`**. (Or in PowerShell: `powershell -ExecutionPolicy Bypass -File install\install.ps1`) |
+| **Mac** | Open **Terminal**, type `bash ` (with a space), drag the `install.sh` file from the `install` folder into the window, and press Enter. |
+| **Linux** | In a terminal, from the app folder: `bash install/install.sh` |
+
+The first run takes 5 to 15 minutes, mostly downloading Python packages and the AI model
+(about 2 GB). It may ask for your computer password (to install Python or Ollama) or show
+an "allow" prompt. When it's done, open **http://localhost:8765** or use the Desktop icon.
+Running it again is safe: it repairs or updates the setup and won't overwrite your data.
+
+Good to know:
+* **Mac:** macOS stops background jobs from reading Desktop, Documents and Downloads, so
+  the installer offers to copy the app to your home folder (`~/job-aggregator`). Say yes.
+* **Less than 8 GB of RAM:** the installer offers the smaller `llama3.2:1b` model.
+* **Results:** look in the web page, or open `logs/latest-digest.md` after each run.
+* **Turn off the schedule (keeps your data):** Windows `install\install.bat -Uninstall`;
+  Mac/Linux `bash install/install.sh --uninstall`.
+* **Options:** `--no-schedule`, `--no-ollama`, `--port 8800`, a path to a
+  `personal-pack.zip`, `--dry-run` (on Windows: `-NoSchedule`, `-NoOllama`, `-Port 8800`,
+  `-Pack <zip>`, `-DryRun`).
+* **Behind the scenes:** Windows uses Task Scheduler (tasks `JobAggregator-UI` and
+  `JobAggregator-Auto`). Mac uses LaunchAgents (`com.jobaggregator.ui` / `.auto`). Linux
+  uses systemd user units (`job-aggregator-ui.service`, `job-aggregator-auto.timer`), or
+  cron if systemd isn't available. They all call `install/run_auto.py`, a small Python
+  wrapper with a lock file so two runs never overlap.
+
 ## Quick start (your own Mac or Windows PC)
 
 You need **Python 3.10+** ([python.org/downloads](https://www.python.org/downloads/);
