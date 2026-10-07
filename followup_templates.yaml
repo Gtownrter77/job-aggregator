@@ -11,7 +11,8 @@
 #   {greeting}        "Hi <contact name>," or "Hello <Company> team,"
 #   {name}            contact name (or followups.default_contact_name)
 #   {company} {title} {role}  (role = title cleaned of location/parentheses)
-#   {city}            first city in the posting location (e.g. Alpharetta)
+#   {city}            first city in the posting location (e.g. Alpharetta). Never use it to say or imply
+#                     that the applicant lives or works in that town.
 #   {detail}          posting-specific noun phrase, e.g.
 #                     the line in your posting about "helping families raise financially smart kids"
 #                     the posting's emphasis on patient care and scheduling
@@ -83,7 +84,7 @@ touches:
       - |
         {greeting}
 
-        I'm reaching out because I just applied for {role} at {company}, and I'm genuinely excited about it. {Detail} is a big part of why. {background}
+        I'm reaching out because I just applied for {role} at {company}, and {detail} is a big part of why I'm excited about it. {background}
 
         If a short call would be useful, I'm flexible on timing.
       - |

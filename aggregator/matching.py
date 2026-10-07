@@ -69,7 +69,7 @@ def profile_text(cfg: dict) -> str:
     parts = [sc.get("profile") or ""] + list(cfg["search"].get("roles") or [])
     rf = sc.get("resume_file")
     if rf and Path(resolve(rf)).exists():
-        parts.append(Path(resolve(rf)).read_text())
+        parts.append(Path(resolve(rf)).read_text(encoding="utf-8", errors="replace"))
     return " ".join(parts).strip()
 
 

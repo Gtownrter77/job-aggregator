@@ -46,7 +46,12 @@ DEFAULTS: dict[str, Any] = {
         },
     },
     "scoring": {"method": "tfidf", "profile": "", "resume_file": "", "embedding_model": "sentence-transformers/all-MiniLM-L6-v2"},
-    "llm": {"enabled": False, "ollama_url": "http://localhost:11434", "model": "llama3.1:8b", "max_jobs_per_run": 50},
+    "llm": {"enabled": False, "ollama_url": "http://localhost:11434", "model": "llama3.2:3b", "max_jobs_per_run": 50,
+            "num_ctx": 4096, "keep_alive": "15m", "timeout_seconds": 240, "draft_attempts": 3, "fit_summary": True,
+            "extract_on_fetch": False},
+    "auto": {"min_score": 0.04, "require_direct_fit": True, "max_qualify_per_run": 5, "max_per_company_per_run": 2,
+             "new_within_hours": 72, "exclude_title_regex": r"\b(intern|internship|co-?op|college grads?|new grads?|student|apprentice)\b",
+             "top_n": 5, "digest_dir": "logs"},
     "database": {"path": "data/jobs.db"},
     "server": {"host": "0.0.0.0", "port": 8765},
     "followups": {
@@ -62,7 +67,8 @@ DEFAULTS: dict[str, Any] = {
         "sending_enabled": False,
         "use_llm": True,
     },
-    "applicant": {"headline": "", "skills": [], "accomplishments": [], "profile_file": ""},
+    "applicant": {"headline": "", "skills": [], "accomplishments": [], "profile_file": "",
+                  "location_fact": "", "home_base": "", "work_area": "", "home_area_places": []},
 }
 
 

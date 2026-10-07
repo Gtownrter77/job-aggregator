@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, timedelta
 
-from .compose import MARKER_RE, generate_sequence
+from .compose import MARKER_RE, generate_sequence, template_sequence
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 # addresses that are clearly not a person/recruiting inbox
@@ -80,15 +80,46 @@ def _ensure_drafts(conn, cfg, job, lead):
 
 
 def rerender_unedited(conn, cfg, job_id):
-    """After a contact change, regenerate drafts the user hasn't hand-edited (greeting uses the name)."""
+    """After a contact change, refresh drafts the user hasn't hand-edited (greeting uses the name).
+    Model-written drafts keep their text and only get the new greeting line (no slow regeneration
+    inside a web request); template drafts are re-rendered."""
+    from .compose import greeting_for
+
     job = dict(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
     lead = dict(conn.execute("SELECT * FROM leads WHERE job_id = ?", (job_id,)).fetchone())
-    seq = {e["touch"]: e for e in generate_sequence(job, lead, cfg)}
+    rows = conn.execute("SELECT id, touch, body, generator FROM followups WHERE job_id=? AND status='draft' AND edited=0",
+                        (job_id,)).fetchall()
+    if not rows:
+        return
+    seq = None
+    greeting = greeting_for(job, lead, cfg)
     with conn:
-        for f in conn.execute("SELECT id, touch FROM followups WHERE job_id=? AND status='draft' AND edited=0", (job_id,)).fetchall():
+        for f in rows:
+            if (f["generator"] or "").startswith("ollama"):
+                first, _, rest = f["body"].partition("\n")
+                conn.execute("UPDATE followups SET body=?, updated_at=? WHERE id=?", (greeting + "\n" + rest, _now(), f["id"]))
+                continue
+            seq = seq or {e["touch"]: e for e in template_sequence(job, lead, cfg)}
             e = seq[f["touch"]]
             conn.execute("UPDATE followups SET subject=?, body=?, generator=?, updated_at=? WHERE id=?",
                          (e["subject"], e["body"], e["generator"], _now(), f["id"]))
+
+
+def redraft(conn, cfg, job_id) -> int:
+    """Rewrite this job's unedited, unsent drafts (e.g. after installing Ollama or changing the
+    model). Dates and statuses are kept; hand-edited or approved drafts are never touched."""
+    job = dict(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
+    lead = dict(conn.execute("SELECT * FROM leads WHERE job_id = ?", (job_id,)).fetchone())
+    rows = conn.execute("SELECT id, touch FROM followups WHERE job_id=? AND status='draft' AND edited=0", (job_id,)).fetchall()
+    if not rows:
+        return 0
+    seq = {e["touch"]: e for e in generate_sequence(job, lead, cfg)}
+    with conn:
+        for f in rows:
+            e = seq[f["touch"]]
+            conn.execute("UPDATE followups SET subject=?, body=?, generator=?, updated_at=? WHERE id=? AND status='draft' AND edited=0",
+                         (e["subject"], e["body"], e["generator"], _now(), f["id"]))
+    return len(rows)
 
 
 def unqualify(conn, job_id):

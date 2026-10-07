@@ -278,9 +278,19 @@ qualifying, auto-qualifying, editing and approving only write rows to the
 ### How the drafts are written
 
 * With a local [Ollama](https://ollama.com) model (`llm.enabled: true`,
-  `followups.use_llm: true`) the three emails are generated from the posting and the
-  applicant facts, then lint-checked. Otherwise (the default here, Ollama isn't installed)
-  a template engine composes them from `followup_templates.yaml`.
+  `followups.use_llm: true`, default model `llama3.2:3b`, ~2 GB RAM, CPU-only is fine,
+  ~45 s per job for all 3 touches) each touch is written by the model from the posting
+  and the applicant's **corroborated** facts (`compose.applicant_facts`: `use`
+  accomplishments without a `confirm` flag, credentials found in most resume versions).
+  Every touch is validated: 35-125 words, a subject line, no `[[...]]`/bracket
+  placeholders, no banned clichés, no unconfirmed claims (`FORBIDDEN_CLAIMS`: PMP, LEED,
+  Ohio University / bachelor's, "supervised 14 PMs", revenue figures ...), no claimed AI
+  experience on AI roles, no invented prior contact, and **every number must appear in
+  the facts or the posting**. A touch that fails twice falls back to its template
+  version; if Ollama is down the whole sequence uses templates. Greeting, sign-off and
+  the signature (name/phone/email from `config.local.yaml`) are added in code, so the
+  signature is always exact. The `generator` column says `ollama:<model>` or `templates`.
+* Without Ollama a template engine composes them from `followup_templates.yaml`.
 * Each touch has its own angle: (1) warm intro tying one specific posting detail to the
   applicant, (2) value-add nudge with a true accomplishment plus one light line,
   (3) gracious, witty last check-in. Each has 6 subject lines, 6 bodies and (touches
@@ -295,6 +305,27 @@ qualifying, auto-qualifying, editing and approving only write rows to the
   "hope this finds you well", …), distinct subjects. Placeholders `{name} {company}
   {title} {applicant_name}` etc. are documented at the top of the templates file.
 * Hand-edited drafts are never re-rendered.
+
+## Unattended runs (local AI, no paid APIs)
+
+`scripts/auto_run.sh` (= `python -m aggregator auto` plus housekeeping) runs from cron at
+**7:19, 11:19 and 16:19 ET on weekdays**:
+
+1. starts Ollama (`scripts/ollama-bg.sh`) and the UI (`scripts/serve-bg.sh`) if they're down;
+2. fetches each enabled track separately (a crash in one track or source doesn't stop the run);
+3. rescores, then auto-qualifies up to `auto.max_qualify_per_run` (5) strong NEW matches:
+   first seen in the last `auto.new_within_hours` (72 h), not already a lead, score >=
+   `auto.min_score` (0.04 ~ top 0.5% of postings), fit = direct, de-duplicated (same company
+   + near-identical title), at most 2 per company per run;
+4. their 3 follow-ups are written by the local model as **drafts** (approve in the UI;
+   nothing is ever sent, approved or scheduled automatically);
+5. writes `logs/digest-YYYY-MM-DD-HHMM.md` and `logs/latest-digest.md`: new-job counts,
+   top 5 matches with links and a short Fit/Gap note from the model, newly qualified jobs,
+   follow-ups due, leads blocked on a contact email, and any source errors.
+
+`python -m aggregator redraft <job_id>...` rewrites a lead's unedited drafts with the current
+model (hand-edited/approved drafts are untouched). A lock (`flock`) prevents overlapping runs. Logs: `logs/auto_run.log`, `logs/ollama.log`.
+Crontab: `19 7,11,16 * * 1-5 .../scripts/auto_run.sh` and `@reboot .../scripts/boot.sh`.
 
 ## Resume profile
 

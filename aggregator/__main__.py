@@ -1,4 +1,4 @@
-"""CLI: python -m aggregator {fetch,serve,verify-slugs,rescore,stats,qualify,followups,send-approved}"""
+"""CLI: python -m aggregator {fetch,serve,verify-slugs,rescore,stats,qualify,followups,send-approved,auto}"""
 from __future__ import annotations
 
 import argparse
@@ -137,6 +137,23 @@ def cmd_send(args, cfg):
     return 2 if res["blocked_by"] and not args.dry_run else 0
 
 
+def cmd_redraft(args, cfg):
+    from . import db, followups
+
+    conn = db.connect(cfg)
+    for jid in args.job_ids:
+        n = followups.redraft(conn, cfg, jid)
+        print(f"{jid}: rewrote {n} unedited draft(s)")
+        for f in conn.execute("SELECT touch, generator, subject FROM followups WHERE job_id=? ORDER BY touch", (jid,)):
+            print(f"  touch {f['touch']} [{f['generator']}] {f['subject']}")
+
+
+def cmd_auto(args, cfg):
+    from .auto import main_cli
+
+    return main_cli(args, cfg)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m aggregator", description="Open-source job aggregator")
     p.add_argument("-c", "--config", help="path to config.yaml (default: ./config.yaml or $AGGREGATOR_CONFIG)")
@@ -175,6 +192,15 @@ def main(argv=None):
     sp = sub.add_parser("send-approved", help="send APPROVED, due follow-ups via SMTP (explicit, opt-in)")
     sp.add_argument("--dry-run", action="store_true", help="list what would be sent; send nothing")
     sp.set_defaults(func=cmd_send)
+
+    rp = sub.add_parser("redraft", help="rewrite unedited drafts of qualified job(s) (e.g. with Ollama); never sends")
+    rp.add_argument("job_ids", nargs="+")
+    rp.set_defaults(func=cmd_redraft)
+
+    ap = sub.add_parser("auto", help="unattended run: fetch, rescore, auto-qualify strong new matches (drafts only), write digest")
+    ap.add_argument("--no-fetch", action="store_true", help="skip fetching (use what's in the DB)")
+    ap.add_argument("--no-qualify", action="store_true", help="don't qualify anything (digest only)")
+    ap.set_defaults(func=cmd_auto)
 
     sub.add_parser("rescore", help="recompute relevance scores after editing scoring.profile").set_defaults(func=cmd_rescore)
     sub.add_parser("stats", help="show DB counts and last run summary").set_defaults(func=cmd_stats)

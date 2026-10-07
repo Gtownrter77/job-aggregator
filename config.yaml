@@ -190,16 +190,41 @@ scoring:
   embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
 
 llm:
-  # Optional structured extraction via a LOCAL Ollama server (free, open source).
-  # Skipped automatically when Ollama isn't reachable.
-  enabled: false
+  # LOCAL Ollama server (free, open source, no API keys, no token limits).
+  # Install: curl -fsSL https://ollama.com/install.sh | sh ; scripts/ollama-bg.sh ; ollama pull llama3.2:3b
+  # Everything is skipped automatically (templates are used) when Ollama isn't reachable.
+  enabled: true
   ollama_url: "http://localhost:11434"
-  model: "llama3.1:8b"
+  # Small open-weights model that runs on CPU (~2 GB RAM). Bigger = better prose but slower;
+  # e.g. "llama3.1:8b" needs ~6 GB free RAM and is ~2.5x slower on CPU.
+  model: "llama3.2:3b"
+  num_ctx: 4096
+  keep_alive: "15m"           # unload the model from RAM after 15 idle minutes
+  timeout_seconds: 240        # per request
+  draft_attempts: 3           # tries per touch before that touch falls back to the template
+  fit_summary: true           # 1-2 sentence "why it fits / main gap" per top match in the auto digest
+  extract_on_fetch: false     # per-job structured extraction during fetch (slow on CPU: ~20 s/job)
   max_jobs_per_run: 50
 
 database:
   # SQLite for v1. Schema is plain SQL kept Postgres-portable.
   path: "data/jobs.db"
+
+# `python -m aggregator auto` / scripts/auto_run.sh (scheduled 3x per weekday):
+# fetch both tracks, rescore, auto-qualify up to `max_qualify_per_run` strong NEW matches
+# (drafts only; nothing is ever sent), then write logs/latest-digest.md.
+auto:
+  # TF-IDF cosine score vs the resume profile. 0.04 is roughly the top 0.5% of postings in the
+  # DB (median ~0.009, 99th pct ~0.033); combined with fit=direct (title is construction /
+  # field / project / sales / facilities work, or >= 3 resume skills in the posting).
+  min_score: 0.04
+  require_direct_fit: true
+  max_qualify_per_run: 5
+  max_per_company_per_run: 2
+  new_within_hours: 72          # only jobs first seen this recently are auto-qualify candidates
+  exclude_title_regex: "\\b(intern|internship|co-?op|college grads?|new grads?|student|apprentice)\\b"
+  top_n: 5                      # matches listed in the digest
+  digest_dir: "logs"
 
 server:
   host: "0.0.0.0"
