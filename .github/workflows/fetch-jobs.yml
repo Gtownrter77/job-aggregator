@@ -1,0 +1,52 @@
+# Manual job fetch on GitHub Actions.
+#
+# * Runs ONLY when started by hand (Actions tab -> fetch-jobs -> Run workflow).
+#   The schedule is intentionally disabled so the repo doesn't get automated runs.
+# * Needs NO secrets and never sends email (it only runs `python -m aggregator fetch`;
+#   the sole email path, `send-approved`, is never called here).
+# * Never commits or pushes anything: the resulting jobs.db is uploaded as a
+#   short-lived build artifact only.
+#
+# To re-enable a schedule, add under `on:`
+#   schedule:
+#     - cron: "0 */6 * * *"
+name: fetch-jobs
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fetch-jobs
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Fetch jobs
+        run: |
+          mkdir -p data
+          python -m aggregator fetch
+
+      - name: Stats
+        run: python -m aggregator stats
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jobs-db
+          path: data/jobs.db
+          retention-days: 7
