@@ -367,14 +367,30 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
     return str(path)
 
 
+def publish_dashboard(cfg) -> None:
+    """Opt-in (dashboard.publish: true): refresh the phone snapshot on GitHub Pages. Fails soft."""
+    if not (cfg.get("dashboard") or {}).get("publish"):
+        return
+    try:
+        from .snapshot import build_and_publish
+
+        res = build_and_publish(cfg)
+        print(f"dashboard: {'published ' + (res.get('url') or res.get('branch', '')) if res['ok'] else 'publish FAILED: ' + res['error']}"
+              f"  ({res.get('path')})")
+    except Exception:  # noqa: BLE001 - never fail the run over the dashboard
+        traceback.print_exc()
+
+
 def main_cli(args, cfg) -> int:
     try:
         r = run_auto(cfg, fetch=not args.no_fetch, qualify=not args.no_qualify)
     except Exception:  # noqa: BLE001
         traceback.print_exc()
+        publish_dashboard(cfg)
         return 1
     if r.get("skipped"):
         print("skipped: another run holds the lock")
         return 0
     print(f"digest: {r['digest']}  (new {r['new_total']}, qualified {len(r['qualified'])}, errors {len(r['errors'])})")
+    publish_dashboard(cfg)
     return 0

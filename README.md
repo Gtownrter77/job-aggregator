@@ -189,6 +189,31 @@ Use a different config file with `-c path/to/config.yaml` or `AGGREGATOR_CONFIG=
 * JSON API: `/api/jobs?q=nurse&source=indeed&track=atlanta&region=US&sort=date&page=1`,
   `/api/jobs/<id>/company`, `/api/followups`, `/api/stats`, `/healthz`.
 
+## Phone snapshot (no computer needed)
+
+```bash
+python -m aggregator snapshot                 # -> dist/Job-Dashboard-YYYY-MM-DD.html
+python -m aggregator snapshot --out my.html
+python -m aggregator snapshot --publish       # also push it to GitHub Pages (gh-pages branch)
+```
+
+One self-contained HTML file (inline CSS, no JavaScript, no external fonts, ~350 KB) you can
+attach to an email and open on a phone: header counts (total, new in 24 h, active leads,
+follow-ups due), every active lead (direct apply link, posting, company website/careers, the
+published hiring email with its source, contact, touch 1/2/3 dates and approval state), the 3
+follow-up drafts per lead as **mailto: buttons** that only open your own mail app with the draft
+filled in (nothing is sent until you press Send there; nothing is approved), and the top 50 new
+jobs (last 72 h, both tracks, split evenly). All text is HTML-escaped; only http(s) links are
+clickable; postings appear as 300-character excerpts.
+
+**Publishing (opt-in).** With `dashboard.publish: true` in `config.local.yaml`, every `auto` run
+(the 3x-daily cron) regenerates the page and force-pushes it as `index.html` + `.nojekyll` to an
+orphan `gh-pages` branch built in a temp directory, so `main` and your working tree are never
+touched. A failed push is logged and the run still succeeds. Enable Pages once with
+`gh api -X POST repos/<owner>/<repo>/pages -f 'source[branch]=gh-pages' -f 'source[path]=/'`.
+On a public repository the page is **public** (leads, drafts, your phone number); it carries
+`noindex`, but anyone with the link can read it.
+
 ## Phone app (Android)
 
 Your phone can't run JobSpy or Ollama, so the Android app is a **thin client**: it shows

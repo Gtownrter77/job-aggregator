@@ -261,6 +261,19 @@ auto:
   top_n: 5                      # matches listed in the digest
   digest_dir: "logs"
 
+# Phone dashboard: `python -m aggregator snapshot` writes ONE self-contained HTML file
+# (dist/Job-Dashboard-YYYY-MM-DD.html; inline CSS, no JS, opens from an email on a phone).
+# Leads, follow-up drafts (as mailto: buttons that only open your mail app) and top new jobs.
+# publish: true -> after every `auto` run, also force-push it as index.html to the orphan
+# gh-pages branch (GitHub Pages; main is never touched). On a PUBLIC repo that page is public:
+# turn it on only in config.local.yaml, on purpose. Publishing fails soft (the run still succeeds).
+dashboard:
+  publish: false
+  out_dir: "dist"               # gitignored
+  branch: "gh-pages"            # never main/master
+  pages_url: ""                 # shown in logs, e.g. https://<user>.github.io/<repo>/
+  updates_by_email: false       # true only if something really emails updates after each check (footer text)
+
 # Company info for qualified leads + top digest matches (aggregator/enrich.py, `python -m
 # aggregator enrich`). Free sources only, in this order: JobSpy's employer fields + the posting
 # text (emails, recruiter name, direct apply link), the posting's ATS (Greenhouse/Lever/Ashby

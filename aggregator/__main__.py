@@ -1,4 +1,4 @@
-"""CLI: python -m aggregator {fetch,serve,token,verify-slugs,rescore,stats,qualify,followups,send-approved,auto,enrich}"""
+"""CLI: python -m aggregator {fetch,serve,token,verify-slugs,rescore,stats,qualify,followups,send-approved,auto,enrich,snapshot}"""
 from __future__ import annotations
 
 import argparse
@@ -223,6 +223,12 @@ def cmd_enrich(args, cfg):
     return 0
 
 
+def cmd_snapshot(args, cfg):
+    from .snapshot import main_cli
+
+    return main_cli(args, cfg)
+
+
 def cmd_auto(args, cfg):
     from .auto import main_cli
 
@@ -292,6 +298,12 @@ def main(argv=None):
     ep.add_argument("--force", action="store_true", help="re-crawl companies even if enriched in the last enrich.cache_days")
     ep.add_argument("--budget", type=float, help="time budget in seconds (default: enrich.max_seconds_per_run; none with --all)")
     ep.set_defaults(func=cmd_enrich)
+
+    sn = sub.add_parser("snapshot", help="write ONE self-contained phone-friendly HTML dashboard (no server needed); never sends")
+    sn.add_argument("--out", help="output .html path (default: dist/Job-Dashboard-YYYY-MM-DD.html)")
+    sn.add_argument("--publish", action="store_true",
+                    help="also force-push it as index.html to the orphan gh-pages branch (GitHub Pages); main is never touched")
+    sn.set_defaults(func=cmd_snapshot)
 
     sub.add_parser("rescore", help="recompute relevance scores after editing scoring.profile").set_defaults(func=cmd_rescore)
     sub.add_parser("stats", help="show DB counts and last run summary").set_defaults(func=cmd_stats)

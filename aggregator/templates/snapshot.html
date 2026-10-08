@@ -1,0 +1,192 @@
+{# Self-contained phone snapshot (aggregator/snapshot.py). No JS, no external assets. Autoescaped. #}
+{% macro link(url, label, cls="btn") %}{% if url %}<a class="{{ cls }}" href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ label }}</a>{% endif %}{% endmacro %}
+{% macro company_info(ci, contact_email='') %}
+<dl class="ci">
+  {% if ci.description %}<dt>About</dt><dd>{{ ci.description }}</dd>{% endif %}
+  {% if ci.industry %}<dt>Profile</dt><dd>{{ ci.industry }}</dd>{% endif %}
+  {% if ci.hq %}<dt>HQ</dt><dd>{{ ci.hq }}</dd>{% endif %}
+  {% if ci.phone %}<dt>Phone</dt><dd>{{ ci.phone }}</dd>{% endif %}
+  <dt>Hiring email</dt><dd>
+    {% if ci.hiring_email %}<b>{{ ci.hiring_email }}</b>{% if ci.recruiter_name %} ({{ ci.recruiter_name }}){% endif %}
+      <div class="muted">source: {% if ci.hiring_source_url %}<a href="{{ ci.hiring_source_url }}" target="_blank" rel="noopener noreferrer">{{ ci.hiring_source_url | host }}</a> <span class="url">{{ ci.hiring_source_url }}</span>{% else %}{{ ci.hiring_source or 'posting' }}{% endif %}</div>
+    {% else %}<span class="warn">No hiring email published — apply via link</span>{% if contact_email %}<div class="muted">(the contact email above was added separately)</div>{% endif %}{% endif %}
+  </dd>
+  {% if ci.website %}<dt>Website</dt><dd><a href="{{ ci.website }}" target="_blank" rel="noopener noreferrer">{{ ci.website | host }}</a></dd>{% endif %}
+  {% if ci.careers or ci.ats_board %}<dt>Careers</dt><dd>
+    {% if ci.careers %}<a href="{{ ci.careers }}" target="_blank" rel="noopener noreferrer">{{ ci.careers | host }} careers</a>{% endif %}
+    {% if ci.ats_board %}{% if ci.careers %} · {% endif %}<a href="{{ ci.ats_board }}" target="_blank" rel="noopener noreferrer">job board (ATS)</a>{% endif %}</dd>{% endif %}
+  {% if ci.status == 'anonymous' %}<dt>Note</dt><dd class="muted">Anonymous listing (company name withheld)</dd>{% endif %}
+</dl>
+{% endmacro %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="format-detection" content="telephone=no">
+<title>Job Dashboard · {{ d.generated }}</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#17181c;--muted:#5f6370;--line:#dfe1e6;--accent:#2347c5;--due:#b42318;--due-bg:#fdecea;--ok:#146c2e;--ok-bg:#e6f4ea;--soon:#8a5a00;--soon-bg:#fff4dc}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:0 0 32px}
+header{background:#1d2a5b;color:#fff;padding:16px 14px 14px}
+header h1{margin:0;font-size:21px}
+header .gen{opacity:.85;font-size:14px;margin-top:2px}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}
+.stat{background:rgba(255,255,255,.12);border-radius:10px;padding:8px 10px}
+.stat b{display:block;font-size:22px;line-height:1.1}
+.stat span{font-size:13px;opacity:.9}
+main{padding:0 10px;max-width:760px;margin:0 auto}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+nav a{flex:1 1 auto;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:22px;padding:10px 12px;color:var(--accent);text-decoration:none;font-weight:600;min-height:44px}
+h2{font-size:19px;margin:22px 4px 8px}
+.note{font-size:14px;color:var(--muted);margin:0 4px 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 12px}
+.card.due{border-left:5px solid var(--due)}
+.co{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.02em}
+.title{font-size:17px;font-weight:700;margin:2px 0 4px;overflow-wrap:anywhere}
+.meta{font-size:14px;color:var(--muted)}
+.meta b{color:var(--ink)}
+.pill{display:inline-block;white-space:nowrap;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;margin:2px 4px 2px 0;background:#eef0f4;color:#333}
+.pill.due{background:var(--due-bg);color:var(--due)}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}
+.pill.soon{background:var(--soon-bg);color:var(--soon)}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;border-radius:10px;border:1px solid var(--accent);color:var(--accent);background:#fff;text-decoration:none;font-weight:600;font-size:15px;flex:1 1 130px;text-align:center}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.mail{background:var(--ok);border-color:var(--ok);color:#fff;width:100%;flex-basis:100%}
+a{color:var(--accent)}
+.url{display:block;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+dl.ci{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;margin:8px 0 0;font-size:14px}
+dl.ci dt{color:var(--muted);font-weight:600}
+dl.ci dd{margin:0;overflow-wrap:anywhere}
+.warn{color:var(--soon);font-weight:600}
+.muted{color:var(--muted);font-size:13px}
+table.touches{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+table.touches td{border-top:1px solid var(--line);padding:6px 4px;vertical-align:top}
+details{margin-top:8px;border-top:1px solid var(--line);padding-top:4px}
+details>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;color:var(--accent);list-style:none}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"▸";display:inline-block;width:1.1em;transition:transform .15s}
+details[open]>summary::before{transform:rotate(90deg)}
+details.section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 12px;margin-bottom:12px}
+details.section>summary{font-size:17px}
+.draft{background:#fafbfc;border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0}
+.draft .subj{font-weight:700;overflow-wrap:anywhere}
+.draft pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:14px;margin:8px 0;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px}
+.mailnote{font-size:13px;color:var(--muted);margin:6px 0 0}
+.ex{font-size:14px;color:#33363d;margin:8px 0 0}
+footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
+@media (min-width:600px){.stats{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<header id="top">
+  <h1>Job Dashboard{% if d.applicant %} · {{ d.applicant }}{% endif %}</h1>
+  <div class="gen">Generated {{ d.generated }}</div>
+  <div class="stats">
+    <div class="stat"><b>{{ d.counts.total }}</b><span>total jobs</span></div>
+    <div class="stat"><b>{{ d.counts.new_24h }}</b><span>new in last 24h</span></div>
+    <div class="stat"><b>{{ d.counts.leads }}</b><span>active leads</span></div>
+    <div class="stat"><b>{{ d.counts.followups_due }}</b><span>follow-ups due{% if d.counts.leads_due %} ({{ d.counts.leads_due }} leads){% endif %}</span></div>
+  </div>
+</header>
+<main>
+<nav><a href="#leads">Leads ({{ d.counts.leads }})</a><a href="#new">New jobs ({{ d.counts.new_listed }})</a></nav>
+
+<h2 id="leads">Active leads</h2>
+<p class="note">Due and overdue follow-ups first, then by match score. Follow-up drafts are inside each lead. {{ d.mailto_note }}</p>
+{% for L in d.leads %}
+<section class="card{% if L.due_count %} due{% endif %}" id="lead-{{ L.id[:12] }}">
+  <div class="co">{{ L.company }}</div>
+  <div class="title">{{ L.title }}</div>
+  <div class="meta">{{ L.location or 'Location not listed' }} · score <b>{{ '%.3f' | format(L.score) }}</b> · posted {{ L.posted }}</div>
+  <div>
+    {% if L.overdue %}<span class="pill due">follow-up overdue</span>{% elif L.due_count %}<span class="pill due">follow-up due today</span>
+    {% elif L.next_touch %}<span class="pill soon">next touch {{ L.next_touch.when }}</span>{% endif %}
+    {% for t in L.tracks %}<span class="pill">{{ t }}</span>{% endfor %}
+  </div>
+  <div class="btns">
+    {% if L.ci.apply and L.ci.apply != L.posting %}{{ link(L.ci.apply, 'Apply directly', 'btn primary') }}{{ link(L.posting, 'View posting') }}
+    {% else %}{{ link(L.posting or L.ci.apply, 'Apply via posting', 'btn primary') }}{% endif %}
+    {{ link(L.ci.careers or L.ci.website, 'Company careers' if L.ci.careers else 'Company website') }}
+  </div>
+  {% if L.ci.apply %}<span class="url">Apply: {{ L.ci.apply }}{% if L.ci.apply_source %} ({{ L.ci.apply_source }}){% endif %}</span>{% endif %}
+  <dl class="ci">
+    <dt>Contact</dt><dd>
+      {% if L.contact_name %}{{ L.contact_name }}{% elif L.ci.recruiter_name %}{{ L.ci.recruiter_name }} <span class="muted">(named on posting)</span>{% else %}<span class="muted">no name</span>{% endif %}
+      {% if L.contact_email %}<br><b>{{ L.contact_email }}</b>{% if L.contact_source %} <span class="muted">({{ L.contact_source }})</span>{% endif %}
+      {% else %}<br><span class="warn">No contact email yet</span>{% endif %}
+    </dd>
+  </dl>
+  {{ company_info(L.ci, L.contact_email) }}
+  <table class="touches">
+    {% for t in L.touches %}
+    <tr><td><b>Touch {{ t.touch }}</b></td><td>{{ t.day }}</td>
+      <td>{% if t.due %}<span class="pill due">{{ t.when }}</span>{% elif t.pending %}<span class="pill soon">{{ t.when }}</span>{% else %}<span class="pill">{{ t.when }}</span>{% endif %}</td>
+      <td>{% if t.approved %}<span class="pill ok">approved</span>{% elif t.pending %}<span class="pill">not approved</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  {% if L.touches %}
+  <details>
+    <summary>Follow-up drafts ({{ L.touches | length }})</summary>
+    {% for t in L.touches %}
+    <div class="draft">
+      <div class="muted">Touch {{ t.touch }} · {{ t.day }} · {{ t.when }} · {{ 'approved' if t.approved else ('not approved' if t.pending else t.status) }}</div>
+      <div class="subj">{{ t.subject }}</div>
+      <details>
+        <summary>Show message</summary>
+        <pre>{{ t.body }}</pre>
+      </details>
+      <a class="btn mail" href="{{ t.mailto }}">✉ Open draft {{ t.touch }} in my email app{% if not L.contact_email %} (no recipient){% endif %}</a>
+      <p class="mailnote">{{ d.mailto_note }}{% if not L.contact_email %} No contact email on file, so the To: line is empty.{% endif %}</p>
+    </div>
+    {% endfor %}
+  </details>
+  {% endif %}
+  {% if L.excerpt %}
+  <details><summary>Posting excerpt</summary><p class="ex">{{ L.excerpt }}</p></details>
+  {% endif %}
+</section>
+{% else %}
+<p class="note">No active leads.</p>
+{% endfor %}
+
+<h2 id="new">Top new jobs (not yet leads)</h2>
+<p class="note">First seen in the last {{ d.new_hours }} hours, highest match score first; Atlanta and remote AI tracks.</p>
+{% for track, jobs in d.new_jobs.items() %}
+<details class="section" open>
+  <summary>{{ d.track_label.get(track, track) }} ({{ jobs | length }})</summary>
+  {% for J in jobs %}
+  <div class="card">
+    <div class="co">{{ J.company }}</div>
+    <div class="title">{{ J.title }}</div>
+    <div class="meta">{{ J.location or 'Location not listed' }} · score <b>{{ '%.3f' | format(J.score) }}</b> · posted {{ J.posted }}</div>
+    <div class="btns">
+      {% if J.ci.apply and J.ci.apply != J.posting %}{{ link(J.ci.apply, 'Apply directly', 'btn primary') }}{{ link(J.posting, 'View posting') }}
+      {% else %}{{ link(J.posting or J.ci.apply, 'Apply via posting', 'btn primary') }}{% endif %}
+      {{ link(J.ci.careers or J.ci.website, 'Company careers' if J.ci.careers else 'Company website') }}
+    </div>
+    <details>
+      <summary>Company info &amp; excerpt</summary>
+      {{ company_info(J.ci) }}
+      {% if J.excerpt %}<p class="ex">{{ J.excerpt }}</p>{% endif %}
+    </details>
+  </div>
+  {% else %}
+  <p class="note">No new jobs on this track.</p>
+  {% endfor %}
+</details>
+{% endfor %}
+
+<footer>
+  {% if updates_by_email %}Snapshot — updates arrive by email after each check{% else %}Snapshot from {{ d.generated }}{% endif %}
+  {% if published %}<br>This page is regenerated after each scheduled job check.{% endif %}
+  <br><a href="#top">Back to top</a>
+</footer>
+</main>
+</body>
+</html>

@@ -74,6 +74,8 @@ DEFAULTS: dict[str, Any] = {
                "max_pages_per_company": 8, "request_timeout_seconds": 10, "delay_seconds": 0.6, "search": True,
                "fetch_board_details": True, "auto_set_contact": True, "top_jobs": 20,
                "user_agent": "Mozilla/5.0 (compatible; job-aggregator-enrich/1.0; +https://github.com/Gtownrter77/job-aggregator)"},
+    "dashboard": {"publish": False, "out_dir": "dist", "branch": "gh-pages", "remote": "", "pages_url": "",
+                  "updates_by_email": False},
     "database": {"path": "data/jobs.db"},
     "server": {"host": "127.0.0.1", "port": 8765, "access_token": ""},
     "followups": {
