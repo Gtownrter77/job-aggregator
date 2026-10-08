@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone app · Job Aggregator</title>
+<style>
+  :root { --bg:#f7f7f8; --card:#fff; --ink:#1b1b1f; --muted:#6b6b76; --line:#e4e4e9; --acc:#2952cc; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:#111827; color:#fff; padding:14px 22px; display:flex; gap:18px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  nav a.nav { color:#c7c9d1; text-decoration:none; margin-right:12px; font-size:13.5px; }
+  nav a.nav.on, nav a.nav:hover { color:#fff; }
+  main { padding:16px 22px; max-width:820px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin:12px 0; }
+  .big { font:600 20px/1.4 ui-monospace,Menlo,Consolas,monospace; background:#eef1fb; padding:6px 10px; border-radius:7px; display:inline-block; margin:2px 0; }
+  .warn { background:#fff8e6; border:1px solid #f1d58a; color:#6b4e00; padding:10px 12px; border-radius:8px; }
+  .muted { color:var(--muted); font-size:12.5px; }
+  code { background:#f0f0f3; padding:1px 5px; border-radius:4px; }
+  a { color:var(--acc); }
+  {% include "_mobile_css.html" %}
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/" style="color:#fff;text-decoration:none">Job Aggregator</a></h1>
+  <nav><a href="/" class="nav">Jobs</a> <a href="/followups" class="nav">Follow-ups</a> <a href="/phone" class="nav on">Phone app</a></nav>
+</header>
+<main>
+{% if not local %}
+  <div class="card">You're connected to the Job Aggregator from another device. Server details and the access token
+  are only shown on the computer that runs the server.</div>
+{% else %}
+  <h2>Connect the Android app</h2>
+  {% if lan_bound and lan_bound not in ['127.0.0.1', 'localhost', '::1'] %}
+  <div class="card">This server is in <b>LAN mode</b> (listening on <code>{{ lan_bound }}</code>), so your phone can reach it on the same Wi-Fi.</div>
+  {% else %}
+  <div class="warn">Right now the server only accepts connections from this computer. Stop it and start it in LAN mode:
+    <br><code>python -m aggregator serve --lan</code>
+    <br><span class="muted">or, for the background UI the installer set up, add <code>server: {host: "0.0.0.0"}</code> to
+    config.local.yaml and restart the computer (or run <code>python install/run_auto.py serve --background --host 0.0.0.0</code>
+    after stopping the current one).</span></div>
+  {% endif %}
+  <div class="card">
+    <b>1. Server address</b> (type this into the app):<br>
+    {% for ip in ips %}<span class="big">http://{{ ip }}:{{ port }}</span><br>{% else %}
+    <span class="muted">Couldn't detect this computer's IP. Windows: <code>ipconfig</code> (IPv4 Address) · Mac: System Settings → Wi-Fi → Details · Linux: <code>hostname -I</code></span>{% endfor %}
+    {% if ips|length > 1 %}<div class="muted">More than one address: use the one on the same network as your phone (usually 192.168.x.x or 10.x.x.x).</div>{% endif %}
+  </div>
+  <div class="card">
+    <b>2. Access token</b>:<br>
+    {% if token %}<span class="big">{{ token }}</span><div class="muted">from {{ token_source }} · new one: <code>python -m aggregator token --new</code> (then restart the server)</div>
+    {% else %}<span class="muted">None configured yet. It is created automatically the first time you start <code>serve --lan</code>
+      (or run <code>python -m aggregator token</code>).</span>{% endif %}
+  </div>
+  <div class="card">
+    <b>3. If the app can't connect</b>
+    <ul>
+      <li>Phone and computer on the <b>same Wi-Fi</b> (not mobile data, not a guest network).</li>
+      <li>Computer awake and the server running in LAN mode.</li>
+      <li>Firewall allows TCP port {{ port }} on private/home networks (Windows: click "Allow" on the prompt, or see the README).</li>
+    </ul>
+  </div>
+  <p class="muted">Nothing is ever sent from the app either: approving a draft only marks it; emails go out only via
+  <code>python -m aggregator send-approved</code> on this computer.</p>
+{% endif %}
+</main>
+</body>
+</html>

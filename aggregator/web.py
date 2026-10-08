@@ -1,17 +1,20 @@
 """Local web UI: FastAPI + Jinja2 + htmx (vendored, no CDN needed)."""
 from __future__ import annotations
 
+import html
 import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, enrich, followups as fu
+from . import access, db, enrich, followups as fu
 from .config import load_config
 from .matching import tfidf_scores
 
@@ -20,8 +23,58 @@ cfg = load_config()
 app = FastAPI(title="Job Aggregator")
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
+templates.env.globals["is_local"] = lambda request: access.is_loopback(request.client.host if request.client else None)
 PAGE_SIZE = 50
 SOURCES = ["greenhouse", "lever", "ashby", "indeed", "linkedin", "google", "zip_recruiter", "glassdoor"]
+
+
+# ---------------------------------------------------------------- LAN access token
+# Requests from this computer (127.0.0.1 / ::1) are always allowed. Anything else
+# (the phone app, another device on your Wi-Fi) must present the access token when
+# one is configured (see aggregator/access.py). /healthz stays open so the phone
+# app's "Test connection" can tell "server unreachable" apart from "wrong token".
+ACCESS_TOKEN = access.resolve_token(cfg)
+OPEN_PATHS = {"/healthz"}
+
+TOKEN_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Access token · Job Aggregator</title>
+<style>body{{font:16px/1.5 system-ui,sans-serif;margin:0;padding:24px;background:#f7f7f8;color:#1b1b1f}}
+form{{max-width:420px;margin:40px auto;background:#fff;border:1px solid #e4e4e9;border-radius:10px;padding:18px}}
+input,button{{font:inherit;padding:10px;width:100%;margin-top:8px;border:1px solid #e4e4e9;border-radius:7px}}
+button{{background:#2952cc;color:#fff;border-color:#2952cc}}.err{{color:#9b2a17}}</style></head><body>
+<form method="get" action="/"><b>Job Aggregator: access token required</b>
+<p>{msg}</p><p style="font-size:14px;color:#6b6b76">On the computer running the aggregator, run
+<code>python -m aggregator token</code> or open <code>http://localhost:{port}/phone</code> to see it.</p>
+<input name="token" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off" autocapitalize="none" autofocus>
+<button>Continue</button></form></body></html>"""
+
+
+@app.middleware("http")
+async def access_token_gate(request: Request, call_next):
+    token = ACCESS_TOKEN
+    client = request.client.host if request.client else None
+    if not token or request.url.path in OPEN_PATHS or access.is_loopback(client):
+        return await call_next(request)
+    auth = request.headers.get("authorization", "")
+    from_query = request.query_params.get("token")
+    supplied_fresh = [request.headers.get("x-access-token"),
+                      auth[7:] if auth.lower().startswith("bearer ") else None, from_query]
+    if access.check(token, [request.cookies.get(access.COOKIE)]):
+        return await call_next(request)
+    if access.check(token, supplied_fresh):
+        if from_query and request.method == "GET":  # drop the token from the URL bar / history
+            q = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "token"])
+            resp = RedirectResponse(request.url.path + (f"?{q}" if q else ""), status_code=303)
+        else:
+            resp = await call_next(request)
+        resp.set_cookie(access.COOKIE, token, max_age=365 * 86400, httponly=True, samesite="lax")
+        return resp
+    msg = "That token is not right." if any(supplied_fresh) or request.cookies.get(access.COOKIE) else \
+        "This server only accepts devices that know its access token."
+    if request.url.path.startswith("/api/") or "hx-request" in request.headers:
+        return JSONResponse({"error": "access token required"}, status_code=401)
+    return HTMLResponse(TOKEN_PAGE.format(msg=html.escape(msg), port=request.url.port or cfg["server"]["port"]),
+                        status_code=401)
 
 
 def _conn():
@@ -167,7 +220,18 @@ def api_stats():
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    return {"ok": True, "app": "job-aggregator", "token_required": bool(ACCESS_TOKEN)}
+
+
+@app.get("/phone", response_class=HTMLResponse)
+def phone_page(request: Request):
+    """How to connect the Android app. The token is only shown to this computer."""
+    local = access.is_loopback(request.client.host if request.client else None)
+    port = request.url.port or cfg["server"]["port"]
+    return templates.TemplateResponse(request, "phone.html", {
+        "local": local, "port": port, "ips": access.lan_ips() if local else [],
+        "token": ACCESS_TOKEN if local else None, "token_source": access.token_source(cfg) if local else "",
+        "lan_bound": os.environ.get("AGGREGATOR_BIND_HOST", ""), "cfg": cfg})
 
 
 # ---------------------------------------------------------------- follow-ups

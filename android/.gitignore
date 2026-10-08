@@ -1,0 +1,17 @@
+# build output / local machine files
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+# signing: NEVER commit keystores or their passwords (keep them outside the repo)
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+*.apk
+*.aab

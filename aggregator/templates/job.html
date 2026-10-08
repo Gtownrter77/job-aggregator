@@ -25,12 +25,13 @@
   pre.desc { white-space:pre-wrap; font:13px/1.5 system-ui,sans-serif; max-height:520px; overflow:auto; }
   .HIRING { color:#1b6b38; font-weight:600; } .GENERAL { color:#8a5a00; } .IGNORE { color:#888; }
   {% include "_company_css.html" %}
+  {% include "_mobile_css.html" %}
 </style>
 </head>
 <body>
 <header>
   <h1><a href="/" style="color:#fff;text-decoration:none">Job Aggregator</a></h1>
-  <nav><a href="/" class="nav">Jobs</a> <a href="/followups" class="nav">Follow-ups</a></nav>
+  <nav><a href="/" class="nav">Jobs</a> <a href="/followups" class="nav">Follow-ups</a> {% if is_local(request) %}<a href="/phone" class="nav">Phone app</a>{% endif %}</nav>
 </header>
 <main>
   <h2>{{ job.title }}</h2>
@@ -47,10 +48,10 @@
 
   {% if ci.hiring_emails or ci.general_emails or ci.ignored_emails %}
   <div class="card"><b>Every address found</b> <span class="muted">(verbatim, with the page it was read from)</span>
-    <table><tr><th>Email</th><th>Class</th><th>Why</th><th>Source</th></tr>
+    <table class="rtable"><tr class="hd"><th>Email</th><th>Class</th><th>Why</th><th>Source</th></tr>
     {% for e in ci.hiring_emails + ci.general_emails + ci.ignored_emails %}
-      <tr><td>{{ e.email }}</td><td class="{{ e['class'] }}">{{ e['class'] }}</td><td class="muted">{{ e.why }}</td>
-          <td><a href="{{ e.source_url }}" target="_blank" rel="noopener">{{ (e.source_url or e.source) | truncate(60, true) }}</a></td></tr>
+      <tr><td>{{ e.email }}</td><td data-l="Class" class="{{ e['class'] }}">{{ e['class'] }}</td><td data-l="Why" class="muted">{{ e.why }}</td>
+          <td data-l="Source"><a href="{{ e.source_url }}" target="_blank" rel="noopener">{{ (e.source_url or e.source) | truncate(60, true) }}</a></td></tr>
     {% endfor %}</table></div>
   {% endif %}
 

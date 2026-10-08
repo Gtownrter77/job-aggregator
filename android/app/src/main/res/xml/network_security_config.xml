@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The aggregator server runs on Ryan's own computer and speaks plain HTTP on the home
+  network (e.g. http://192.168.1.50:8765). Android's network security config can only
+  list host names, not IP ranges, so cleartext must be allowed globally; the app itself
+  only ever loads the one server address you enter (every other link opens in the
+  phone's browser) and warns in Settings when that address isn't a private/LAN one.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -12,7 +12,8 @@ Linux systemd/cron). Pure Python, no bash needed.
   `--if-missed` only runs when the most recent weekday slot (7:19, 11:19, 16:19 local time)
   hasn't been covered yet - used for "at logon/boot" triggers so a missed run catches up
   without running on every login.
-* `serve` runs the web UI on 127.0.0.1 (default port from config.yaml, 8765). It exits 0
+* `serve` runs the web UI on 127.0.0.1 (default port from config.yaml, 8765; set
+  `server: {host: "0.0.0.0"}` in config.local.yaml for the Android app). It exits 0
   immediately if something already answers on that port. `--supervise` restarts it if it
   crashes (used on Windows, which has no KeepAlive). `--background` starts it detached.
 
@@ -337,7 +338,8 @@ def cmd_auto(a) -> int:
 def cmd_serve(a) -> int:
     cfg = _cfg()
     port = a.port or int((cfg.get("server") or {}).get("port") or 8765)
-    host = a.host or "127.0.0.1"
+    # --host > server.host (config.local.yaml; e.g. "0.0.0.0" for the phone app) > 127.0.0.1
+    host = a.host or str((cfg.get("server") or {}).get("host") or "127.0.0.1")
     if _answers(_ui_url(port), 3):
         _log(f"serve: something already answers on port {port}; not starting another")
         return 0
@@ -405,9 +407,10 @@ def main(argv=None) -> int:
     pa.add_argument("--port", type=int)
     pa.add_argument("--dry-run", action="store_true", help="print what would run; run nothing")
     pa.add_argument("extra", nargs=argparse.REMAINDER, help="extra args for `aggregator auto` (e.g. -- --no-fetch)")
-    ps = sub.add_parser("serve", help="run the web UI on 127.0.0.1")
+    ps = sub.add_parser("serve", help="run the web UI (127.0.0.1 unless server.host says otherwise)")
     ps.add_argument("--port", type=int)
-    ps.add_argument("--host", help="bind address (default 127.0.0.1 = this computer only)")
+    ps.add_argument("--host", help="bind address (default server.host, normally 127.0.0.1 = this computer only; "
+                                   "0.0.0.0 = LAN mode for the phone app, protected by the access token)")
     ps.add_argument("--supervise", action="store_true", help="restart the UI if it crashes")
     ps.add_argument("--background", action="store_true", help="start detached and return")
     pst = sub.add_parser("status", help="show UI / Ollama / last-run status")

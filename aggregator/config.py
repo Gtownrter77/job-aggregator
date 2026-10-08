@@ -75,7 +75,7 @@ DEFAULTS: dict[str, Any] = {
                "fetch_board_details": True, "auto_set_contact": True, "top_jobs": 20,
                "user_agent": "Mozilla/5.0 (compatible; job-aggregator-enrich/1.0; +https://github.com/Gtownrter77/job-aggregator)"},
     "database": {"path": "data/jobs.db"},
-    "server": {"host": "0.0.0.0", "port": 8765},
+    "server": {"host": "127.0.0.1", "port": 8765, "access_token": ""},
     "followups": {
         "applicant_name": "",
         "applicant_phone": "",

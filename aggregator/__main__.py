@@ -1,4 +1,4 @@
-"""CLI: python -m aggregator {fetch,serve,verify-slugs,rescore,stats,qualify,followups,send-approved,auto,enrich}"""
+"""CLI: python -m aggregator {fetch,serve,token,verify-slugs,rescore,stats,qualify,followups,send-approved,auto,enrich}"""
 from __future__ import annotations
 
 import argparse
@@ -39,11 +39,59 @@ def cmd_fetch(args, cfg):
 
 
 def cmd_serve(args, cfg):
+    import os
+
     import uvicorn
 
-    host = args.host or cfg["server"]["host"]
+    from . import access
+
+    host = "0.0.0.0" if args.lan else (args.host or cfg["server"].get("host") or "127.0.0.1")
     port = args.port or cfg["server"]["port"]
+    if args.no_token:
+        os.environ["AGGREGATOR_NO_TOKEN"] = "1"
+    os.environ["AGGREGATOR_BIND_HOST"] = host
+    if access.is_loopback(host):
+        print(f"Job Aggregator UI: http://localhost:{port}  (this computer only; "
+              f"use --lan to allow your phone on the same Wi-Fi)", flush=True)
+    else:
+        token = access.resolve_token(cfg)
+        if not token and not access.disabled():
+            token = access.create_token_file()
+            print(f"Created a new access token in {access.TOKEN_FILE}", flush=True)
+        ips = access.lan_ips() if host in ("0.0.0.0", "::") else [host]
+        print("=" * 64, flush=True)
+        print("LAN mode: other devices on your network can reach this UI.", flush=True)
+        for ip in ips or ["<this computer's IP>"]:
+            print(f"  Phone app server address:  http://{ip}:{port}", flush=True)
+        if token:
+            print(f"  Access token:              {token}   ({access.token_source(cfg)})", flush=True)
+        else:
+            print("  WARNING: no access token: anyone on this network can use the UI.", flush=True)
+        print(f"  Also shown at http://localhost:{port}/phone on this computer.", flush=True)
+        print("  Allow TCP port %d through the firewall (private/home network only)." % port, flush=True)
+        print("=" * 64, flush=True)
     uvicorn.run("aggregator.web:app", host=host, port=port, log_level="info")
+
+
+def cmd_token(args, cfg):
+    from . import access
+
+    if args.new:
+        if access.resolve_token(cfg) and access.token_source(cfg) != access.TOKEN_FILE:
+            print(f"Token comes from {access.token_source(cfg)}; change it there.")
+            return 1
+        t = access.create_token_file(force=True)
+        print(f"New access token: {t}\nRestart the server (serve --lan) and re-enter it in the phone app.")
+        return 0
+    t = access.resolve_token(cfg)
+    if not t:
+        t = access.create_token_file()
+        print(f"Created {access.TOKEN_FILE}")
+    print(f"Access token: {t}   ({access.token_source(cfg)})")
+    port = cfg["server"]["port"]
+    for ip in access.lan_ips():
+        print(f"Phone app server address (when running `serve --lan`): http://{ip}:{port}")
+    return 0
 
 
 def cmd_verify(args, cfg):
@@ -195,10 +243,18 @@ def main(argv=None):
     f.add_argument("--track", help="comma list of tracks to run: atlanta,remote_ai (default: all enabled)")
     f.set_defaults(func=cmd_fetch)
 
-    s = sub.add_parser("serve", help="run the web UI")
-    s.add_argument("--host")
+    s = sub.add_parser("serve", help="run the web UI (default: http://localhost:8765, this computer only)")
+    s.add_argument("--host", help="bind address (default server.host = 127.0.0.1; 0.0.0.0 = every network interface)")
     s.add_argument("--port", type=int)
+    s.add_argument("--lan", action="store_true",
+                   help="same as --host 0.0.0.0: let your phone (same Wi-Fi) connect; requires the access token")
+    s.add_argument("--no-token", action="store_true",
+                   help="LAN mode WITHOUT an access token (anyone on the network can use the UI)")
     s.set_defaults(func=cmd_serve)
+
+    tk = sub.add_parser("token", help="show (or create) the LAN access token for the phone app")
+    tk.add_argument("--new", action="store_true", help="replace data/access_token.txt with a fresh token")
+    tk.set_defaults(func=cmd_token)
 
     v = sub.add_parser("verify-slugs", help="check every company slug returns HTTP 200")
     v.add_argument("--prune", action="store_true", help="remove failing slugs from companies.yaml")

@@ -36,12 +36,13 @@
   a { color:var(--acc); }
   .cibox { border:1px dashed var(--line); border-radius:8px; padding:8px 10px; margin:8px 0; background:#fcfcfd; }
   {% include "_company_css.html" %}
+  {% include "_mobile_css.html" %}
 </style>
 </head>
 <body>
 <header>
   <h1><a href="/" style="color:#fff;text-decoration:none">Job Aggregator</a></h1>
-  <nav><a href="/" class="nav">Jobs</a> <a href="/followups" class="nav on">Follow-ups</a></nav>
+  <nav><a href="/" class="nav">Jobs</a> <a href="/followups" class="nav on">Follow-ups</a> {% if is_local(request) %}<a href="/phone" class="nav">Phone app</a>{% endif %}</nav>
 </header>
 <main>
   <div class="safety"><b>Nothing is sent from this page.</b> Approving only marks a draft as allowed to send.

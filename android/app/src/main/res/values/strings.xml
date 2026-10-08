@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_title">Server settings</string>
+    <string name="welcome_title">Connect to your computer</string>
+    <string name="settings_intro">This app shows the Job Aggregator running on your own computer. On that computer, start it in LAN mode:\n\n    python -m aggregator serve --lan\n\nIt prints the server address and access token to type in below (also shown at http://localhost:8765/phone on the computer).</string>
+    <string name="server_label">Server address</string>
+    <string name="server_hint">http://192.168.1.50:8765</string>
+    <string name="token_label">Access token (if the server shows one)</string>
+    <string name="token_hint">xxxx-xxxx-xxxx-xxxx</string>
+    <string name="test_connection">Test connection</string>
+    <string name="save">Save</string>
+    <string name="save_and_open">Save &amp; open</string>
+    <string name="testing">Testing connection…</string>
+    <string name="save_anyway">Save anyway</string>
+    <string name="cancel">Cancel</string>
+    <string name="not_connected_title">Couldn\'t connect</string>
+    <string name="invalid_address">Enter the computer\'s address, e.g. http://192.168.1.50:8765</string>
+    <string name="menu_home">Jobs</string>
+    <string name="menu_followups">Follow-ups</string>
+    <string name="menu_reload">Reload</string>
+    <string name="menu_settings">Server settings</string>
+    <string name="retry">Retry</string>
+    <string name="cant_reach_title">Can\'t reach the aggregator</string>
+    <string name="no_app_for_link">No app on this phone can open that link.</string>
+    <string name="tips">Check that:\n• the phone is on the same Wi-Fi as the computer (not mobile data or a guest network)\n• the computer is on and awake\n• the server is running in LAN mode: python -m aggregator serve --lan\n• the computer\'s firewall allows incoming TCP port 8765 (private/home network)\n• the address is the computer\'s IP, e.g. http://192.168.1.50:8765</string>
+</resources>

@@ -39,12 +39,13 @@
   .qbtn { font:inherit; font-size:12px; padding:3px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; cursor:pointer; white-space:nowrap; }
   .qbtn.on { background:#e7f6ec; color:#1b6b38; border-color:#bfe5cb; }
   @media (max-width: 1000px) { form.filters { grid-template-columns: 1fr 1fr; } }
+  {% include "_mobile_css.html" %}
 </style>
 </head>
 <body>
 <header>
   <h1><a href="/" style="color:#fff;text-decoration:none">Job Aggregator</a></h1>
-  <nav><a href="/" class="nav on">Jobs</a> <a href="/followups" class="nav">Follow-ups</a></nav>
+  <nav><a href="/" class="nav on">Jobs</a> <a href="/followups" class="nav">Follow-ups</a> {% if is_local(request) %}<a href="/phone" class="nav">Phone app</a>{% endif %}</nav>
   <span class="meta">Tracks: {{ cfg.search.location }} {{ cfg.search.distance_miles }} mi + remote AI anywhere · {{ f.total }} jobs in DB
   {% if f.last_run %} · last fetch {{ f.last_run.started_at[:16].replace('T',' ') }} UTC ({{ f.last_run.unique_this_run }} unique){% endif %}</span>
 </header>

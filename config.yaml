@@ -284,7 +284,12 @@ enrich:
   user_agent: "Mozilla/5.0 (compatible; job-aggregator-enrich/1.0; +https://github.com/Gtownrter77/job-aggregator)"
 
 server:
-  host: "0.0.0.0"
+  # 127.0.0.1 = only this computer can open the UI (safe default).
+  # To use the Android app on the same Wi-Fi run `python -m aggregator serve --lan`
+  # (or set host: "0.0.0.0" in config.local.yaml to make the background UI LAN-wide).
+  # LAN mode requires an access token: env AGGREGATOR_TOKEN, server.access_token in
+  # config.local.yaml, or data/access_token.txt (auto-created; `python -m aggregator token`).
+  host: "127.0.0.1"
   port: 8765
 
 followups:

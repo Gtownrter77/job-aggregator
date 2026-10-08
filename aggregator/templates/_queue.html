@@ -43,11 +43,11 @@
 {% for f in qd.due %}{{ item(f, true) }}{% else %}<p class="muted">Nothing due. Qualify jobs from the <a href="/">Jobs</a> page to generate drafts.</p>{% endfor %}
 
 <h2>Upcoming ({{ qd.upcoming|length }})</h2>
-<table>
-  <tr><th>Date</th><th>Touch</th><th>Status</th><th>Job</th><th>Contact</th><th></th></tr>
+<table class="rtable">
+  <tr class="hd"><th>Date</th><th>Touch</th><th>Status</th><th>Job</th><th>Contact</th><th></th></tr>
   {% for f in qd.upcoming %}
   <tr>
-    <td>{{ f.scheduled_for }}</td><td>{{ f.touch }}/3</td><td><span class="pill {{ f.status }}">{{ f.status }}</span></td>
+    <td data-l="Date">{{ f.scheduled_for }}</td><td data-l="Touch">{{ f.touch }}/3</td><td><span class="pill {{ f.status }}">{{ f.status }}</span></td>
     <td><a href="{{ f.url }}" target="_blank" rel="noopener">{{ f.title }}</a> <span class="muted">· {{ f.company }}</span></td>
     <td>{% if f.contact_email %}{{ f.contact_email }}{% else %}{% set ci = qd.ci.get(f.job_id) or {} %}<span class="needs">needs contact</span>
         {% if ci.apply_url %}<div class="muted">no hiring email published · <a href="{{ ci.apply_url }}" target="_blank" rel="noopener">apply link</a></div>{% endif %}{% endif %}
@@ -59,10 +59,10 @@
 </table>
 
 <h2>History ({{ qd.done|length }})</h2>
-<table>
-  <tr><th>Date</th><th>Touch</th><th>Status</th><th>Job</th><th>Updated</th></tr>
+<table class="rtable">
+  <tr class="hd"><th>Date</th><th>Touch</th><th>Status</th><th>Job</th><th>Updated</th></tr>
   {% for f in qd.done %}
-  <tr><td>{{ f.scheduled_for }}</td><td>{{ f.touch }}/3</td><td><span class="pill {{ f.status }}">{{ f.status }}</span></td>
-      <td>{{ f.title }} <span class="muted">· {{ f.company }}</span></td><td class="muted">{{ f.updated_at[:16].replace('T',' ') }}</td></tr>
+  <tr><td data-l="Date">{{ f.scheduled_for }}</td><td data-l="Touch">{{ f.touch }}/3</td><td><span class="pill {{ f.status }}">{{ f.status }}</span></td>
+      <td>{{ f.title }} <span class="muted">· {{ f.company }}</span></td><td data-l="Updated" class="muted">{{ f.updated_at[:16].replace('T',' ') }}</td></tr>
   {% else %}<tr><td colspan="5" class="muted">None yet.</td></tr>{% endfor %}
 </table>

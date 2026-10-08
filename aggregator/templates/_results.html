@@ -1,6 +1,6 @@
 <p class="muted">{{ res.total }} matching job{{ '' if res.total == 1 else 's' }}{% if res.total %} · page {{ res.page }} of {{ res.pages }}{% endif %}
 {% if p.sort == 'score' and not p.q %} · <em>tip: type a search to rank by TF-IDF relevance (stored score = match to your resume profile)</em>{% endif %}</p>
-<table>
+<table class="rtable">
   <thead><tr><th style="width:34%">Title</th><th>Company</th><th>Location</th><th>Salary</th><th>Posted</th><th>Source</th><th>Score</th><th>Lead</th></tr></thead>
   <tbody>
   {% for r in res.rows %}
@@ -9,13 +9,13 @@
         {% if r.remote %}<span class="remote">remote</span>{% endif %}
         {% for t in (r.track or '').split(',') if t %}<span class="trk">{{ {'atlanta':'ATL','remote_ai':'AI remote'}.get(t, t) }}</span>{% endfor %}
         {% if r.job_type %}<div class="muted">{{ r.job_type | replace('_',' ') | lower }}</div>{% endif %}</td>
-      <td><a href="/jobs/{{ r.id }}" title="Job + company info (website, careers/apply link, hiring email)" style="color:inherit">{{ r.company }}</a></td>
-      <td>{{ r.location }}{% if r.remote and r.remote_region %}<div class="rgn">remote: {{ r.remote_region }}</div>{% endif %}</td>
-      <td>{{ r.salary }}</td>
-      <td class="muted">{{ r.posted }}</td>
-      <td>{% for s in (r.seen_on or r.source).split(',') %}<span class="src {{ 'ats' if s in ['greenhouse','lever','ashby'] }}">{{ s }}</span> {% endfor %}</td>
-      <td class="muted">{{ '%.3f' % r.rel if r.rel else '' }}</td>
-      <td>{% if r.qualified %}<button class="qbtn on" hx-post="/jobs/{{ r.id }}/unqualify" hx-swap="outerHTML" title="Qualified: 3 follow-up drafts queued. Click to un-qualify (skips unsent drafts).">✓ Qualified</button>{% else %}<button class="qbtn" hx-post="/jobs/{{ r.id }}/qualify" hx-swap="outerHTML" title="Mark qualified and generate 3 follow-up drafts (nothing is sent)">Qualify</button>{% endif %}</td>
+      <td data-l="Company"><a href="/jobs/{{ r.id }}" title="Job + company info (website, careers/apply link, hiring email)" style="color:inherit">{{ r.company }}</a></td>
+      <td data-l="Location">{{ r.location }}{% if r.remote and r.remote_region %}<div class="rgn">remote: {{ r.remote_region }}</div>{% endif %}</td>
+      {% if r.salary %}<td data-l="Salary">{{ r.salary }}</td>{% else %}<td class="nosal"></td>{% endif %}
+      <td data-l="Posted" class="muted">{{ r.posted }}</td>
+      <td data-l="Source">{% for s in (r.seen_on or r.source).split(',') %}<span class="src {{ 'ats' if s in ['greenhouse','lever','ashby'] }}">{{ s }}</span> {% endfor %}</td>
+      <td data-l="Score" class="muted">{{ '%.3f' % r.rel if r.rel else '' }}</td>
+      <td class="lead">{% if r.qualified %}<button class="qbtn on" hx-post="/jobs/{{ r.id }}/unqualify" hx-swap="outerHTML" title="Qualified: 3 follow-up drafts queued. Click to un-qualify (skips unsent drafts).">✓ Qualified</button>{% else %}<button class="qbtn" hx-post="/jobs/{{ r.id }}/qualify" hx-swap="outerHTML" title="Mark qualified and generate 3 follow-up drafts (nothing is sent)">Qualify</button>{% endif %}</td>
     </tr>
   {% else %}
     <tr><td colspan="8" class="muted">No jobs match. Loosen the filters or run <code>python -m aggregator fetch</code>.</td></tr>
