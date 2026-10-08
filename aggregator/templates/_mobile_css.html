@@ -6,6 +6,10 @@
   main { padding:10px; }
   form.filters { grid-template-columns:1fr 1fr; padding:10px; gap:8px; }
   form.filters > label:first-child { grid-column:1 / -1; }
+  form.filters > label { min-width:0; }
+  form.filters input, form.filters select { width:100%; min-width:0; }
+  form.filters input[type=checkbox] { width:auto; }
+  body { overflow-x:hidden; }
   input, select, textarea { font-size:16px; }          /* no zoom-on-focus, easier to tap */
   button, .qbtn, .ci-btn, .pager button { font-size:14px; padding:8px 12px; min-height:38px; }
   table.rtable, table.rtable tbody, table.rtable tr, table.rtable td { display:block; width:100%; }

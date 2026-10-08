@@ -41,6 +41,26 @@ class Helpers(unittest.TestCase):
         self.assertTrue(access.check(TOKEN, [None, " " + TOKEN + " "]))
         self.assertFalse(access.check(TOKEN, [None, "", "nope", "ünïcode"]))
 
+    def test_token_file_created_once_and_private(self):
+        import tempfile
+        from pathlib import Path
+        old_file, old_env = access.TOKEN_FILE, {k: os.environ.pop(k, None) for k in ("AGGREGATOR_TOKEN", "AGGREGATOR_NO_TOKEN")}
+        with tempfile.TemporaryDirectory() as d:
+            access.TOKEN_FILE = str(Path(d) / "sub" / "access_token.txt")
+            try:
+                self.assertIsNone(access.resolve_token({}))
+                t = access.create_token_file()
+                self.assertEqual(access.create_token_file(), t)              # stable
+                self.assertEqual(access.resolve_token({}), t)
+                self.assertNotEqual(access.create_token_file(force=True), t)  # --new
+                if os.name == "posix":
+                    self.assertEqual(os.stat(access.TOKEN_FILE).st_mode & 0o777, 0o600)
+            finally:
+                access.TOKEN_FILE = old_file
+                for k, v in old_env.items():
+                    if v is not None:
+                        os.environ[k] = v
+
     def test_resolve_order(self):
         old = {k: os.environ.pop(k, None) for k in ("AGGREGATOR_TOKEN", "AGGREGATOR_NO_TOKEN")}
         try:

@@ -14,6 +14,9 @@ normalized *company + title + location*, scores each job against your
 resume profile (TF-IDF), and serves a local search UI (FastAPI + htmx).
 It also keeps a **3-touch follow-up email draft queue** for qualified leads. Nothing
 is ever sent automatically (see [Follow-up emails](#follow-up-emails-draft-queue--never-auto-sends)).
+There's also an **Android app** that shows the UI on your phone over home Wi-Fi
+(see [Phone app](#phone-app-android); download the APK from
+[Releases](https://github.com/Gtownrter77/job-aggregator/releases/latest)).
 
 Two search **tracks** run by default (every job is tagged with the track(s) it matched):
 
@@ -139,8 +142,10 @@ python -m aggregator fetch --track remote_ai --no-jobspy  # AI-company boards on
 python -m aggregator fetch --no-jobspy     # only Greenhouse/Lever/Ashby (fast, very reliable)
 python -m aggregator fetch --only indeed,greenhouse
 python -m aggregator fetch --companies     # also print per-company counts
-python -m aggregator serve                 # UI at http://localhost:8765
+python -m aggregator serve                 # UI at http://localhost:8765 (this computer only)
 python -m aggregator serve --port 9000
+python -m aggregator serve --lan           # LAN mode for the Android app (see "Phone app" below)
+python -m aggregator token [--new]         # show / replace the LAN access token
 python -m aggregator verify-slugs          # HTTP-check every company slug
 python -m aggregator verify-slugs --prune  # ...and drop failing ones from companies.yaml
 python -m aggregator verify-slugs --track remote_ai   # check companies_ai.yaml
@@ -160,8 +165,8 @@ python -m aggregator enrich <job_id> ... [--force]   # specific jobs; --force re
 python -m unittest discover -s tests       # offline tests (email classification, contact safety)
 ```
 
-Background server helpers: `scripts/serve-bg.sh`, `scripts/stop-server.sh`
-(logs in `logs/server.log`).
+Background server helpers: `scripts/serve-bg.sh` (accepts the same options, e.g. `--lan`),
+`scripts/stop-server.sh` (logs in `logs/server.log`).
 
 Use a different config file with `-c path/to/config.yaml` or `AGGREGATOR_CONFIG=...`.
 
@@ -183,6 +188,105 @@ Use a different config file with `-c path/to/config.yaml` or `AGGREGATOR_CONFIG=
   show the same company card.
 * JSON API: `/api/jobs?q=nurse&source=indeed&track=atlanta&region=US&sort=date&page=1`,
   `/api/jobs/<id>/company`, `/api/followups`, `/api/stats`, `/healthz`.
+
+## Phone app (Android)
+
+Your phone can't run JobSpy or Ollama, so the Android app is a **thin client**: it shows
+this same web UI from the aggregator running on your computer, over your home Wi-Fi.
+Search, company info, Qualify and the follow-up queue all work from the phone. Just like
+the desktop UI, it **never sends email**: approving a draft only marks it, and mail goes out
+only when you run `python -m aggregator send-approved` on the computer.
+
+**Download:** on the phone, open
+<https://github.com/Gtownrter77/job-aggregator/releases/latest> and tap
+**JobAggregator.apk** (Android 7.0+). Android asks you to allow installs from your browser
+("Install unknown apps"); allow it, install, then you can switch it back off. The app's source
+and build instructions are in [`android/`](android/README.md).
+
+### 1. Start the server in LAN mode (on the computer)
+
+By default the UI only listens on `127.0.0.1` (this computer only). To let the phone in:
+
+```bash
+python -m aggregator serve --lan        # = --host 0.0.0.0; Ctrl+C to stop
+# or in the background (macOS/Linux):  scripts/serve-bg.sh --lan
+```
+
+It prints something like:
+
+```
+LAN mode: other devices on your network can reach this UI.
+  Phone app server address:  http://192.168.1.50:8765
+  Access token:              k7mq-9xha-t3pw-ve4r   (data/access_token.txt)
+```
+
+The same details are on **http://localhost:8765/phone** (the *Phone app* link in the UI;
+the token is only shown on the computer itself, never to other devices).
+
+**Keep LAN mode on permanently** (for the background UI the installer set up): add this to
+`config.local.yaml`, then restart the computer (or stop the running UI and start
+`python install/run_auto.py serve --background`):
+
+```yaml
+server:
+  host: "0.0.0.0"
+```
+
+### 2. Find the computer's IP address (if the printout didn't show it)
+
+| Computer | How |
+|---|---|
+| Windows | `ipconfig` in PowerShell / Command Prompt → **IPv4 Address** under your Wi-Fi or Ethernet adapter (e.g. `192.168.1.50`) |
+| Mac | System Settings → Wi-Fi → **Details…** next to your network → *IP address*; or `ipconfig getifaddr en0` in Terminal |
+| Linux | `hostname -I` (first address), or `ip -4 addr show` |
+
+Use the address that starts with `192.168.`, `10.` or `172.16.`–`172.31.`. Home routers can
+hand out a new IP after a reboot; if the app stops connecting, check it again (or give the
+computer a fixed/"reserved" IP in your router).
+
+### 3. Allow port 8765 through the firewall
+
+* **Windows:** the first time you run `serve --lan`, Windows Defender Firewall asks about
+  Python: tick **Private networks** and click **Allow access**. If you missed it, in an
+  *Administrator* PowerShell:
+  `New-NetFirewallRule -DisplayName "Job Aggregator 8765" -Direction Inbound -Protocol TCP -LocalPort 8765 -Profile Private -Action Allow`
+  (your Wi-Fi must be set to *Private*, not *Public*, in Settings → Network & internet).
+* **Mac:** if the firewall is on, click **Allow** when macOS asks whether Python may accept
+  incoming connections (System Settings → Network → Firewall → Options).
+* **Linux:** with ufw: `sudo ufw allow from 192.168.0.0/16 to any port 8765 proto tcp`
+  (adjust to your network); firewalld: `sudo firewall-cmd --add-port=8765/tcp`.
+
+### 4. Connect the app
+
+Open **Job Aggregator** on the phone. The first screen asks for:
+
+* **Server address**: `http://192.168.1.50:8765` (your computer's IP; typing just
+  `192.168.1.50` works too, the app adds `http://` and `:8765`)
+* **Access token**: the `xxxx-xxxx-xxxx-xxxx` value from step 1
+
+Tap **Test connection** ("Connected to the Job Aggregator — N jobs"), then **Save & open**.
+Change either later from the **⋮ menu → Server settings**. Pull down to refresh; the back
+button goes back through pages; job postings, company sites and `mailto:` links open in the
+phone's browser / email app.
+
+If it can't connect: phone on the **same Wi-Fi** (not mobile data or a guest network),
+computer **on and awake**, server running with **`--lan`**, firewall allows **port 8765**.
+
+### Access token (LAN security)
+
+In LAN mode every request that doesn't come from the computer itself must carry the access
+token (the app sends it automatically; a phone *browser* gets a one-time token form and then a
+cookie). Requests from `localhost` never need it, and `/healthz` stays open so the app can tell
+"unreachable" from "wrong token". The token comes from, in order:
+
+1. env `AGGREGATOR_TOKEN`
+2. `server.access_token` in `config.local.yaml`
+3. `data/access_token.txt`, created automatically the first time you start LAN mode
+
+`python -m aggregator token` shows it, `python -m aggregator token --new` replaces it (restart the
+server and re-enter it in the app). `serve --lan --no-token` turns it off; only do that on a
+network you completely trust. The connection is plain HTTP, so use LAN mode on your own Wi-Fi
+(or a VPN such as Tailscale), never on public Wi-Fi, and don't port-forward 8765 on your router.
 
 ## Configuration (`config.yaml`)
 
