@@ -250,7 +250,10 @@ def default_out(cfg: dict, now: datetime | None = None) -> Path:
     return out_dir / f"Job-Dashboard-{now:%Y-%m-%d}.html"
 
 
-def build(cfg: dict, out: str | Path | None = None, now: datetime | None = None, published: bool = False) -> tuple[Path, dict]:
+def build(cfg: dict, out: str | Path | None = None, now: datetime | None = None,
+          pages_out: str | Path | None = None) -> tuple[Path, dict]:
+    """Write the snapshot to `out` (the copy you email/attach). With `pages_out`, also write the
+    hosted variant (footer mentions the automatic refresh when dashboard.publish is on)."""
     now = now or datetime.now(timezone.utc)
     conn = db.connect(cfg)
     try:
@@ -258,13 +261,19 @@ def build(cfg: dict, out: str | Path | None = None, now: datetime | None = None,
     finally:
         conn.close()
     dash = cfg.get("dashboard") or {}
-    # the "regenerated after each check" line is only true for the hosted copy with auto-publish on
-    page = render(data, published=published and bool(dash.get("publish")),
-                  updates_by_email=bool(dash.get("updates_by_email")))
+    by_email = bool(dash.get("updates_by_email"))
     path = Path(out) if out else default_out(cfg, now)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(page, encoding="utf-8")
+    path.write_text(render(data, published=False, updates_by_email=by_email), encoding="utf-8")
+    if pages_out:
+        # the "regenerated after each check" line is only true for the hosted copy with auto-publish on
+        Path(pages_out).write_text(render(data, published=bool(dash.get("publish")), updates_by_email=by_email),
+                                   encoding="utf-8")
     return path, data
+
+
+def pages_path(cfg: dict) -> Path:
+    return resolve((cfg.get("dashboard") or {}).get("out_dir") or "dist") / "pages-index.html"
 
 
 # ---------------------------------------------------------------- publish (GitHub Pages)
@@ -304,19 +313,19 @@ def publish(cfg: dict, html_path: Path) -> dict:
 
 
 def build_and_publish(cfg: dict) -> dict:
-    path, data = build(cfg, published=True)
-    res = publish(cfg, path)
+    path, data = build(cfg, pages_out=pages_path(cfg))
+    res = publish(cfg, pages_path(cfg))
     res.update(path=str(path), counts=data["counts"])
     return res
 
 
 def main_cli(args, cfg) -> int:
-    path, data = build(cfg, out=args.out, published=bool(args.publish))
+    path, data = build(cfg, out=args.out, pages_out=pages_path(cfg) if args.publish else None)
     c = data["counts"]
     print(f"Wrote {path} ({path.stat().st_size / 1024:.0f} KB): {c['total']} jobs, {c['new_24h']} new in 24h, "
           f"{c['leads']} active leads, {c['followups_due']} follow-ups due, {c['new_listed']} new jobs listed")
     if args.publish:
-        res = publish(cfg, path)
+        res = publish(cfg, pages_path(cfg))
         if res["ok"]:
             print(f"Published to branch {res['branch']}" + (f": {res['url']}" if res.get("url") else ""))
         else:
