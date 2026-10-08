@@ -4,7 +4,7 @@ A small, fully open-source job aggregator. It pulls postings from:
 
 | Source | How | Auth / cost |
 |---|---|---|
-| Indeed, LinkedIn, Google Jobs, ZipRecruiter, Glassdoor | [JobSpy](https://github.com/speedyapply/JobSpy) (`python-jobspy`) | none / free |
+| Indeed, LinkedIn, ZipRecruiter, Glassdoor (Google Jobs, Bayt, Naukri, BDJobs supported, off) | [JobSpy](https://github.com/speedyapply/JobSpy) (`python-jobspy`) | none / free |
 | Greenhouse boards | `https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true` | public API, free |
 | Lever boards | `https://api.lever.co/v0/postings/{slug}?mode=json` | public API, free |
 | Ashby boards | `https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true` | public API, free |
@@ -199,9 +199,15 @@ search:
   hours_old: 168              # JobSpy: only last 7 days
 
 jobspy:
-  sites: {indeed: true, linkedin: true, google: true, zip_recruiter: true, glassdoor: true}
+  sites: {indeed: true, linkedin: true, zip_recruiter: true, glassdoor: true,
+          google: false, bayt: false, naukri: false, bdjobs: false}
   search_terms: ["full time", "part time", "manager", ...]   # used when roles is empty
   results_wanted: 40          # per site per search term
+  results_wanted_by_site: {indeed: 100}   # Indeed: 100 jobs per request, no rate limit
+  details: {linkedin: new, zip_recruiter: new, glassdoor: new}   # full posting for NEW rows only
+  # every other scrape_jobs() option is in config.yaml: job_type, easy_apply, linkedin_company_ids,
+  # offset, enforce_annual_salary, description_format, google_search_template, proxies, ca_cert,
+  # user_agent, verbose
 ```
 
 * **Roles** set → postings are kept only if the title contains one of them, and
@@ -241,8 +247,9 @@ tracks:
                "data annotation", "AI operations", "AI product", "automation", ...]
     description_min_hits: 0             # 0 = title match only (descriptions say "AI" everywhere)
     jobspy:
-      sites: {indeed: true, linkedin: true, zip_recruiter: true, glassdoor: false, google: false}
+      sites: {indeed: true, linkedin: true, zip_recruiter: true, glassdoor: true, google: false}
       locations: {indeed: "United States", linkedin: "Worldwide", zip_recruiter: "United States"}
+      results_wanted_by_site: {indeed: 100}
       search_terms: ["artificial intelligence", "machine learning", "LLM", "prompt engineer",
                      "AI operations", "AI trainer", "data annotation", "AI product manager",
                      "automation specialist", "AI solutions", "AI sales", "AI customer success",
@@ -413,9 +420,12 @@ Sources, all free and keyless, cheapest first:
    employer's apply link), `emails` (read from the posting), `company_url_direct` (website),
    `company_addresses`, `company_industry`, `company_num_employees`, `company_revenue`,
    `company_description`, `company_logo`, `company_url` (board/LinkedIn company page),
-   `job_level`, `job_function`, `listing_type`, ... Glassdoor descriptions are fetched at
-   search time (`jobspy.fetch_description_sites`); LinkedIn/ZipRecruiter rows saved without a
-   description get that one posting fetched on demand during enrichment.
+   `job_level`, `job_function`, `listing_type`, `salary_source`, ... For LinkedIn, ZipRecruiter
+   and Glassdoor the full posting (description, emails; ZipRecruiter also the employer's website,
+   HQ, size and industry; LinkedIn industry/level/function) is fetched at fetch time for postings
+   the DB hasn't described yet (`jobspy.details: new`, capped per run); anything still missing is
+   fetched on demand during enrichment. LinkedIn's guest pages no longer expose the employer's
+   apply link, so LinkedIn rows never have `job_url_direct`.
 2. The posting text: emails, "Recruiter: Jane Doe", ATS links.
 3. Greenhouse/Lever/Ashby public APIs: the same job on the company's own board.
 4. One DuckDuckGo search (`ddgs` package) for the company domain / LinkedIn page, then up to
@@ -486,15 +496,20 @@ hosted runners than locally; the ATS sources are unaffected.
 
 ## Known limitations
 
-* **Google Jobs (via JobSpy) currently returns nothing**: google.com now serves a
-  JavaScript-only interstitial to non-browser clients, which JobSpy's HTML parser
-  can't read. The site is logged as failed and skipped after 2 attempts. Leave it
-  enabled to pick up a future JobSpy fix, or set `google: false`.
+* **Google Jobs (via JobSpy) returns nothing and is off** (`google: false`): google.com
+  answers every non-browser request with a "turn on JavaScript" page, whatever the
+  `google_search_term`; JobSpy's own README lists Google Jobs as "currently unavailable".
+  The natural-language query JobSpy needs ("nurse jobs near Atlanta, GA in the last week")
+  is still built from `google_search_template`, so re-enabling it picks up a future fix.
+* bayt (Middle East), naukri (India) and bdjobs (Bangladesh) are supported but off: they
+  don't cover Atlanta or US-remote jobs.
 * JobSpy scrapes public pages; boards can rate-limit (HTTP 429) or block IPs at any
   time. Every site is isolated: failures are logged in the fetch summary and in
   `fetch_log`, and the rest continue. `jobspy.proxies` accepts free/self-hosted proxies.
-* LinkedIn, Glassdoor and ZipRecruiter results have no description unless
-  `linkedin_fetch_description` / `fetch_description` are enabled (slower, more requests).
+* LinkedIn/ZipRecruiter/Glassdoor descriptions cost one request per posting; `details: new`
+  fetches them only for postings not yet in the DB, capped by `detail_max_per_run` /
+  `detail_max_seconds` (the first run after a fresh install fills the backlog over a few runs).
+  `fetch_description: true` re-fetches every result on every run (slow).
 * "All job types" is approximated by a set of broad search terms × `results_wanted`
   per board; no board exposes its full Atlanta inventory. Add terms or raise
   `results_wanted` for more coverage.

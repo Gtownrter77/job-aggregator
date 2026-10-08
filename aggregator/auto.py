@@ -143,11 +143,13 @@ def run_auto(cfg: dict, fetch: bool = True, qualify: bool = True) -> dict:
 
     # 1. fetch each track separately so one track's crash can't take down the other
     tracks = [t for t, tc in (cfg.get("tracks") or {}).items() if (tc or {}).get("enabled")]
+    detail_spent: dict = {}  # JobSpy detail-fetch caps (jobspy.detail_max_*) are per run, shared by the tracks
     for t in (tracks if fetch else []):
         try:
-            s = __import__("aggregator.fetcher", fromlist=["run_fetch"]).run_fetch(copy.deepcopy(cfg), only_tracks=[t])
+            s = __import__("aggregator.fetcher", fromlist=["run_fetch"]).run_fetch(copy.deepcopy(cfg), only_tracks=[t],
+                                                                                  detail_spent=detail_spent)
             res["fetch"][t] = {k: s.get(k) for k in ("seconds", "unique_this_run", "db_inserted_new", "db_updated_existing",
-                                                    "db_pruned_stale_ats", "db_total")}
+                                                    "db_pruned_stale_ats", "db_total", "jobspy_seconds_by_track", "jobspy_details")}
             for src, errs in (s.get("errors") or {}).items():
                 if errs:
                     res["source_errors"].setdefault(src, []).extend(errs if isinstance(errs, list) else [str(errs)])

@@ -143,6 +143,7 @@ JOBSPY_COLS = {
     "job_level": "TEXT",
     "job_function": "TEXT",
     "listing_type": "TEXT",
+    "salary_source": "TEXT",         # direct_data (board field) | description (parsed from the text)
     "skills": "TEXT",
     "experience_range": "TEXT",
     "vacancy_count": "INTEGER",

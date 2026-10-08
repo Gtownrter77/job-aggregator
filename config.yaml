@@ -22,16 +22,24 @@ search:
   hours_old: 168          # JobSpy: only postings from the last N hours (7 days)
 
 jobspy:
+  # python-jobspy 1.2.x (github.com/speedyapply/JobSpy). Every scrape_jobs() option is here.
   enabled: true
   # Toggle each board independently. A failing board is logged and skipped.
   sites:
-    indeed: true
-    linkedin: true
-    google: true
-    zip_recruiter: true
-    glassdoor: true
+    indeed: true          # best scraper: no rate limiting, 100 results per request, richest employer data
+    linkedin: true        # most restrictive: rate-limits around the 10th search page per IP (429)
+    zip_recruiter: true   # US/Canada only
+    glassdoor: true       # rate-limits after ~30 requests per IP; descriptions fetched for new postings only
+    # Google Jobs: off. Google now answers every non-browser request with a "turn on JavaScript"
+    # page (no job data), whatever google_search_term says; JobSpy's README lists Google Jobs as
+    # "currently unavailable". The query is still built properly (google_search_template below).
+    google: false
+    bayt: false           # Middle East boards (Dubai, Saudi Arabia...) - not Atlanta/US-remote
+    naukri: false         # India only
+    bdjobs: false         # Bangladesh only
   # Used only when search.roles is empty (no role filter): several broad
   # queries so "all job types" still returns plenty of results.
+  # Indeed searches the description too; it accepts "exact phrase", -exclusions and (a OR b).
   search_terms:
     - "full time"
     - "part time"
@@ -45,18 +53,38 @@ jobspy:
     - "warehouse"
     - "administrative assistant"
     - "technician"
-  results_wanted: 40          # per site, per search term
-  country_indeed: "usa"
-  linkedin_fetch_description: false   # true = slower, more LinkedIn requests
-  fetch_description: false            # true = also fetch full descriptions for Glassdoor/ZipRecruiter (slower)
-  # Sites whose full posting (description, emails, employer website/HQ) is fetched at SEARCH
-  # time: one extra request per posting. Glassdoor's is cheap (~0.1 s). LinkedIn (~0.7 s) and
-  # ZipRecruiter (~0.5 s) would add minutes per run, so enrichment fetches their details on
-  # demand only for leads/top matches (see `enrich:` below). Indeed always includes them.
-  fetch_description_sites: [glassdoor]
-  max_consecutive_failures: 2         # stop hitting a site after N failures in a row
-  apply_metro_filter: false           # boards already filter by distance; true = also require an Atlanta-metro town
-  proxies: []                         # optional, e.g. ["user:pass@host:port"]
+  results_wanted: 40            # per site, per search term
+  results_wanted_by_site:       # Indeed pages are 100 jobs/request with no rate limit: 100 costs the same as 40
+    indeed: 100
+  country_indeed: "usa"         # Indeed + Glassdoor country (exact names: JobSpy README)
+  job_type: null                # fulltime | parttime | internship | contract | null = all
+  easy_apply: null              # true = only board-hosted applications (hides employer apply links) - keep off
+  linkedin_company_ids: []      # optional LinkedIn numeric company ids to restrict LinkedIn to
+  offset: 0
+  enforce_annual_salary: true   # hourly/monthly pay converted to yearly
+  description_format: markdown  # markdown | html
+  # Google only reads google_search_term (natural language, like typing into Google).
+  google_search_template: "{term} jobs {where} {when}"   # -> "nurse jobs near Atlanta, GA in the last week"
+  # Full posting (description, emails, employer website/HQ/size/industry) per site:
+  #   new    = only postings the DB has no description for yet (one extra request each; cheap at 3 runs/day)
+  #   search = JobSpy fetch_description=True: every result, every run (slow)
+  #   off    = never at fetch time (enrichment still fetches leads/top matches on demand)
+  # Indeed always includes them. LinkedIn guest pages no longer expose the employer's apply link,
+  # so LinkedIn details give description/emails/industry/level/function but no job_url_direct.
+  details:
+    linkedin: new
+    zip_recruiter: new
+    glassdoor: new
+  detail_max_per_run: {linkedin: 300, zip_recruiter: 300, glassdoor: 300}       # per site, per run (both tracks)
+  detail_max_seconds: {linkedin: 300, zip_recruiter: 240, glassdoor: 180}
+  detail_delay_seconds: {linkedin: 0.5, zip_recruiter: 0.3, glassdoor: 0.2}
+  fetch_description: false      # true = JobSpy fetches every posting on every board at search time (slow)
+  max_consecutive_failures: 2   # stop hitting a site after N failures in a row
+  apply_metro_filter: false     # boards already filter by distance; true = also require an Atlanta-metro town
+  proxies: []                   # optional, e.g. ["user:pass@host:port", "localhost"] (round-robin)
+  ca_cert: null                 # CA bundle for proxies
+  user_agent: null              # override (JobSpy 1.2 applies it to Glassdoor only)
+  verbose: 0                    # JobSpy console logs: 0 errors, 1 +warnings, 2 all
 
 ats:
   enabled: true
@@ -173,10 +201,12 @@ tracks:
                "chatbot", "AI agent", "agentic", "computer vision", "deep learning", "data scientist"]
     description_min_hits: 0
     jobspy:
-      # Glassdoor needs a city and Google is blocked (see README); ZipRecruiter is US/Canada.
-      sites: {indeed: true, linkedin: true, zip_recruiter: true, glassdoor: false, google: false}
+      # Glassdoor's remote search (is_remote) works in JobSpy 1.2; only rows Glassdoor marks remote
+      # (or say "remote") are kept. Google is blocked (see jobspy.sites); ZipRecruiter is US/Canada.
+      sites: {indeed: true, linkedin: true, zip_recruiter: true, glassdoor: true, google: false}
       # Indeed is per-country (country_indeed); LinkedIn "Worldwide" covers every country.
       locations: {indeed: "United States", linkedin: "Worldwide", zip_recruiter: "United States"}
+      results_wanted_by_site: {indeed: 100}
       search_terms: ["artificial intelligence", "machine learning", "LLM", "prompt engineer", "AI operations",
                      "AI trainer", "data annotation", "AI product manager", "automation specialist",
                      "AI solutions", "AI sales", "AI customer success", "AI entry level"]

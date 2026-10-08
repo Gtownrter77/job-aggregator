@@ -17,7 +17,7 @@ from collections import Counter, defaultdict
 from . import db, followups, llm
 from .config import load_companies
 from .matching import Filter, TrackMatcher, rescore_all
-from .normalize import MetroMatcher, dedupe_hash, job_id, now_iso, remote_region
+from .normalize import MetroMatcher, dedupe_hash, is_remote_text, job_id, now_iso, remote_region
 from .sources import ats as ats_src
 from .sources import jobspy_source
 
@@ -31,7 +31,8 @@ def enabled_tracks(cfg: dict, only_tracks: list[str] | None = None) -> list[str]
     return [k for k in t if not only_tracks or k in only_tracks]
 
 
-def run_fetch(cfg: dict, only: list[str] | None = None, only_tracks: list[str] | None = None) -> dict:
+def run_fetch(cfg: dict, only: list[str] | None = None, only_tracks: list[str] | None = None,
+              detail_spent: dict | None = None) -> dict:
     """only: optional subset of sources (e.g. ["greenhouse", "indeed"]); only_tracks: subset of tracks."""
     run_id = uuid.uuid4().hex[:12]
     started = now_iso()
@@ -136,6 +137,7 @@ def run_fetch(cfg: dict, only: list[str] | None = None, only_tracks: list[str] |
         if not plan["sites"]:
             return
         log.info("JobSpy [%s] sites=%s terms=%d location=%s", track, plan["sites"], len(plan["terms"]), plan["location"])
+        plan["keep"] = lambda site, j: bool(match(site, dict(j)))  # pre-filter before per-posting detail requests
 
         def on_result(site, term, status, jobs, err):
             kept = 0
@@ -149,9 +151,22 @@ def run_fetch(cfg: dict, only: list[str] | None = None, only_tracks: list[str] |
 
         jobspy_source.fetch(cfg, on_result, plan)
 
+    # postings already described in the DB: `details: new` sites skip their detail request
+    known_described = {h for (h,) in conn.execute(
+        "SELECT dedupe_hash FROM jobs WHERE length(COALESCE(description,'')) > 200")}
+    detail_stats: dict[str, dict] = {}
+    detail_spent = {} if detail_spent is None else detail_spent  # detail caps: per run, shared by the tracks
+    t_jobspy = {}
+
     if cfg["jobspy"].get("enabled"):
         if "atlanta" in tracks:
-            run_jobspy("atlanta", jobspy_source.default_plan(cfg), lambda site, j: atlanta_match(site, j, None))
+            plan = jobspy_source.default_plan(cfg)
+            plan["known_described"] = known_described
+            plan["detail_spent"] = detail_spent
+            t1 = time.time()
+            run_jobspy("atlanta", plan, lambda site, j: atlanta_match(site, j, None))
+            t_jobspy["atlanta"] = round(time.time() - t1, 1)
+            detail_stats["atlanta"] = plan.get("detail_stats") or {}
         if "remote_ai" in tracks:
             aj = ai.get("jobspy") or {}
             plan = {
@@ -161,14 +176,28 @@ def run_fetch(cfg: dict, only: list[str] | None = None, only_tracks: list[str] |
                 "distance": 50,  # ignored for country/"Worldwide" searches, but Indeed rejects an empty radius
                 "is_remote": True,
                 "hours_old": aj.get("hours_old"),
-                "results_wanted": aj.get("results_wanted", 25),
+                "results_wanted": aj.get("results_wanted_by_site") or aj.get("results_wanted", 25),
+                "results_wanted_default": aj.get("results_wanted", 25),
                 "fetch_description_sites": aj.get("fetch_description_sites"),  # None -> jobspy.fetch_description_sites
+                "details": aj.get("details"),  # None -> jobspy.details
+                "known_described": known_described,
+                "detail_spent": detail_spent,
             }
+            for k in ("linkedin_company_ids", "job_type", "easy_apply"):
+                if k in aj:
+                    plan[k] = aj[k]
 
             def ai_match(site, j):
+                if site == "glassdoor":
+                    # Glassdoor's "remote" location also returns some on-site postings: trust the row
+                    j["remote"] = bool(j.get("remote")) or is_remote_text(j.get("title"), j.get("location"))
+                    return j["remote"] and is_ai(j)
                 j["remote"] = True  # the query used each site's remote-only filter
                 return is_ai(j)
+            t1 = time.time()
             run_jobspy("remote_ai", plan, ai_match)
+            t_jobspy["remote_ai"] = round(time.time() - t1, 1)
+            detail_stats["remote_ai"] = plan.get("detail_stats") or {}
 
     # ---- 3. normalize ids + in-run dedupe -----------------------------------
     fetched_at = now_iso()
@@ -242,6 +271,8 @@ def run_fetch(cfg: dict, only: list[str] | None = None, only_tracks: list[str] |
             for src, c in sorted(stats.items()) if ":" not in src
         },
         "per_track_kept_by_source": {t: dict(c) for t, c in track_stats.items()},
+        "jobspy_seconds_by_track": t_jobspy,
+        "jobspy_details": detail_stats,
         "per_track_unique": dict(per_track_unique),
         "per_company": {src: dict(c) for src, c in sorted(stats.items()) if ":" in src and c["kept"]},
         "errors": {k: v for k, v in errors.items()},
