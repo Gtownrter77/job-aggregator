@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, followups as fu
+from . import db, enrich, followups as fu
 from .config import load_config
 from .matching import tfidf_scores
 
@@ -206,17 +206,75 @@ def unqualify_job(job_id: str):
     return _qbtn(job_id, False)
 
 
+def _queue_data(conn) -> dict:
+    data = fu.queue(conn)
+    data["ci"] = {}
+    for f in data["due"] + data["upcoming"]:
+        if f["job_id"] not in data["ci"]:
+            try:
+                data["ci"][f["job_id"]] = enrich.brief(conn, f["job_id"])
+            except Exception:  # noqa: BLE001 - company info is optional
+                pass
+    return data
+
+
 def _queue_html(request, msg=""):
     conn = _conn()
-    data = fu.queue(conn)
+    data = _queue_data(conn)
     conn.close()
     return templates.TemplateResponse(request, "_queue.html", {"qd": data, "msg": msg, "cfg": cfg})
+
+
+@app.get("/jobs/{job_id}", response_class=HTMLResponse)
+def job_page(request: Request, job_id: str):
+    """One job + its company info (website, careers/apply link, published hiring email + source)."""
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "job not found")
+        job = dict(row)
+        job["salary"] = _fmt_salary(row)
+        lead = conn.execute("SELECT * FROM leads WHERE job_id=?", (job_id,)).fetchone()
+        ci = enrich.brief(conn, job_id)
+        qualified = job_id in fu.qualified_ids(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "job.html", {"job": job, "lead": dict(lead) if lead else None, "ci": ci,
+                                                           "qbtn": _qbtn(job_id, qualified), "cfg": cfg})
+
+
+@app.post("/jobs/{job_id}/enrich", response_class=HTMLResponse)
+def job_enrich(request: Request, job_id: str):
+    """Look up company info for one job now (free public sources; never sends anything)."""
+    conn = _conn()
+    try:
+        if not conn.execute("SELECT 1 FROM jobs WHERE id=?", (job_id,)).fetchone():
+            raise HTTPException(404, "job not found")
+        done = bool(conn.execute("SELECT enriched_at FROM jobs WHERE id=?", (job_id,)).fetchone()[0])
+        st = enrich.enrich_jobs(conn, cfg, [job_id], budget_s=120, max_companies=1, force=done)
+        ci = enrich.brief(conn, job_id)
+    finally:
+        conn.close()
+    msg = (f"Looked up in {st.get('seconds', 0):.0f} s"
+           + (f"; lead contact filled with {st['contacts_set'][0]['email']}" if st.get("contacts_set") else "")
+           + (f"; problem: {st['errors'][0]}" if st.get("errors") else ""))
+    return templates.TemplateResponse(request, "_company.html", {"ci": ci, "msg": msg})
+
+
+@app.get("/api/jobs/{job_id}/company")
+def api_job_company(job_id: str):
+    conn = _conn()
+    try:
+        return JSONResponse(enrich.brief(conn, job_id))
+    finally:
+        conn.close()
 
 
 @app.get("/followups", response_class=HTMLResponse)
 def followups_page(request: Request):
     conn = _conn()
-    data = fu.queue(conn)
+    data = _queue_data(conn)
     conn.close()
     return templates.TemplateResponse(request, "followups.html", {"qd": data, "msg": "", "cfg": cfg})
 

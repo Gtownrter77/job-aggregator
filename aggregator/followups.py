@@ -31,12 +31,13 @@ def schedule(start: date, cfg: dict) -> list[date]:
     return out
 
 
-def contact_from_posting(description: str | None) -> str | None:
-    """Email literally written in the posting text (no guessing, no external lookup)."""
-    for m in EMAIL_RE.findall(description or ""):
-        if not _BAD_EMAIL.search(m):
-            return m.lower()
-    return None
+def contact_from_posting(description: str | None, jobspy_emails: str | None = None) -> str | None:
+    """HIRING email literally written in the posting text (no guessing, no external lookup).
+    General inboxes (info@/contact@) and press/sales/support/privacy addresses are never used."""
+    from .enrich import best_posting_contact
+
+    email = best_posting_contact(description, jobspy_emails)
+    return email if email and not _BAD_EMAIL.search(email) else None
 
 
 def qualify(conn, cfg: dict, job_id: str, by: str = "manual", start: date | None = None) -> dict:
@@ -50,7 +51,8 @@ def qualify(conn, cfg: dict, job_id: str, by: str = "manual", start: date | None
     with conn:
         if lead is None:
             start = start or date.today()
-            email = contact_from_posting(job.get("description")) if cfg["followups"].get("contact_from_posting") else None
+            email = (contact_from_posting(job.get("description"), job.get("emails"))
+                     if cfg["followups"].get("contact_from_posting") else None)
             conn.execute(
                 "INSERT INTO leads (job_id, qualified_at, qualified_by, contact_name, contact_email, contact_source, status, updated_at)"
                 " VALUES (?,?,?,?,?,?, 'active', ?)",

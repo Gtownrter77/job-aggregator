@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from . import db, followups, llm
 from .compose import _applicant, applicant_facts, display_company, facts_text, fit_level
 from .config import resolve
+from .enrich import md_lines
 
 log = logging.getLogger("aggregator.auto")
 
@@ -210,6 +211,29 @@ def run_auto(cfg: dict, fetch: bool = True, qualify: bool = True) -> dict:
         dedup.append(j)
     res["top"] = dedup[: int(a["top_n"])]
 
+    # 5b. company info (website, careers/apply link, published hiring email + source) for the new
+    # leads and the digest's matches; fills a lead's EMPTY contact only with a HIRING address
+    # read verbatim on a cited page. Time-capped (enrich.max_seconds_per_run) and fail-soft.
+    res["enrich"] = {}
+    if (cfg.get("enrich") or {}).get("enabled", True):
+        try:
+            from . import enrich
+
+            ids = [q["id"] for q in res["qualified"]] + [j["id"] for j in res["top"]] + [j["id"] for j in res["other_strong"][:5]]
+            ids += [r[0] for r in conn.execute("SELECT job_id FROM leads WHERE status='active' AND COALESCE(contact_email,'')=''")]
+            st = enrich.enrich_jobs(conn, cfg, ids)
+            res["enrich"] = {k: st.get(k) for k in ("jobs", "companies_crawled", "companies_cached", "anonymous", "details_fetched",
+                                                    "deferred", "contacts_set", "errors", "seconds", "http_requests", "searches",
+                                                    "skipped")}
+            for j in res["top"] + res["qualified"] + res["other_strong"]:
+                j["company_info"] = enrich.brief(conn, j["id"])
+            for q in res["qualified"]:
+                lc = (q.get("company_info") or {}).get("lead_contact") or {}
+                q["contact_email"], q["contact_source"] = lc.get("contact_email"), lc.get("contact_source")
+        except Exception as e:  # noqa: BLE001
+            log.exception("enrichment failed")
+            res["errors"].append(f"enrich: {type(e).__name__}: {e}")
+
     if ollama_up and cfg["llm"].get("fit_summary"):
         af = applicant_facts(cfg)
         for j in res["top"] + res["qualified"]:
@@ -226,6 +250,13 @@ def run_auto(cfg: dict, fetch: bool = True, qualify: bool = True) -> dict:
         " (SELECT MIN(scheduled_for) FROM followups f WHERE f.job_id=l.job_id AND f.status IN ('draft','approved')) AS next_touch"
         " FROM leads l JOIN jobs j ON j.id=l.job_id WHERE l.status='active' AND (l.contact_email IS NULL OR l.contact_email='')"
         " ORDER BY next_touch")]
+    try:
+        from .enrich import brief
+
+        for b in res["blocked"]:
+            b["company_info"] = brief(conn, b["id"])
+    except Exception as e:  # noqa: BLE001
+        log.warning("blocked-lead company info: %s", e)
     res["upcoming_count"] = len(q["upcoming"])
     res["seconds"] = round(time.time() - t0, 1)
     conn.close()
@@ -241,6 +272,13 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
     L = [f"# Job digest - {started.strftime('%a %b %d, %Y %I:%M %p')} ET", ""]
     L.append(f"Run took {r['seconds']:.0f} s. Local AI: {r['ollama']}. "
              "Nothing was sent: drafts wait for your approval at http://localhost:8765/followups")
+    en = r.get("enrich") or {}
+    if en and not en.get("skipped"):
+        L.append(f"Company info: {en.get('jobs', 0)} jobs enriched in {en.get('seconds', 0):.0f} s "
+                 f"({en.get('companies_crawled', 0)} company sites checked, {en.get('companies_cached', 0)} cached, "
+                 f"{en.get('anonymous', 0)} anonymous listings skipped); "
+                 f"{len(en.get('contacts_set') or [])} lead contact(s) filled from a published hiring email.")
+    _ci = lambda j, ind: (md_lines(j["company_info"], ind) if j.get("company_info") else [])  # noqa: E731
     L += ["", "## New jobs this run", ""]
     L.append(f"**{r['new_total']}** new postings (atlanta: {r['new_by_track'].get('atlanta', 0)}, "
              f"remote_ai: {r['new_by_track'].get('remote_ai', 0)}).")
@@ -257,6 +295,7 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
         L.append(f"{i}. {_md_job(j)}{tag}")
         if j.get("fit_summary"):
             L.append(f"   - _{j['fit_summary']}_")
+        L += _ci(j, "   ")
     if not r["top"]:
         L.append("_No unqualified jobs first seen in this window._")
     L += ["", f"## Newly auto-qualified ({len(r['qualified'])})", ""]
@@ -267,8 +306,11 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
     for j in r["qualified"]:
         gens = sorted({d["generator"] for d in j["drafts"]})
         L.append(f"- {_md_job(j)}")
-        L.append(f"  - contact: {j.get('contact_email') or 'NEEDS CONTACT EMAIL (add it in the UI)'}; drafts by {', '.join(gens)} "
-                 f"({j['draft_seconds']} s)")
+        src = j.get("contact_source") or ""
+        src = f" (auto-filled from {src[8:]})" if src.startswith("enrich: ") else ""
+        L.append(f"  - contact: {(j.get('contact_email') or 'NEEDS CONTACT EMAIL (add it in the UI)') + src}; drafts by "
+                 f"{', '.join(gens)} ({j['draft_seconds']} s)")
+        L += _ci(j, "  ")
         for d in j["drafts"]:
             L.append(f"  - touch {d['touch']} ({d['scheduled_for']}, {d['status']} = needs approval): {d['subject']}")
         if j.get("fit_summary"):
@@ -280,7 +322,11 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
         L.append("_None this run._")
     if r["other_strong"]:
         L += ["", "Also strong but not auto-qualified (per-run cap / per-company cap); qualify in the UI if you like:", ""]
-        L += [f"- {_md_job(j)}" for j in r["other_strong"]]
+        for j in r["other_strong"]:
+            L.append(f"- {_md_job(j)}")
+            h = (j.get("company_info") or {}).get("hiring_email")
+            if h:
+                L.append(f"  - hiring email: {h['email']} - source: {h.get('source_url')}")
     L += ["", f"## Follow-ups due today or overdue ({len(r['due'])})", ""]
     for f in r["due"]:
         to = f["contact_email"] or "NEEDS CONTACT EMAIL"
@@ -289,7 +335,19 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
         L.append("_Nothing due._")
     L.append(f"\n{r['upcoming_count']} more drafts scheduled later.")
     L += ["", f"## Blocked: no contact email yet ({len(r['blocked'])})", ""]
-    L += [f"- {b['company']} - {b['title']} (next touch {b['next_touch'] or '-'}, {b['qualified_by']}) {b['url'] or ''}" for b in r["blocked"]]
+    for b in r["blocked"]:
+        ci = b.get("company_info") or {}
+        L.append(f"- {b['company']} - {b['title']} (next touch {b['next_touch'] or '-'}, {b['qualified_by']}) "
+                 f"apply: {ci.get('apply_url') or b['url'] or '-'}")
+        h = ci.get("hiring_email")
+        if h:
+            L.append(f"  - hiring email found (not auto-filled): {h['email']} - source: {h.get('source_url')}")
+        elif ci.get("status") == "anonymous":
+            L.append("  - anonymous listing (employer name withheld); apply via the board link")
+        elif ci.get("website") or ci.get("careers_url"):
+            L.append(f"  - {' · '.join(x for x in (ci.get('website'), ci.get('careers_url')) if x)}; no hiring email published")
+        if ci.get("general_emails"):
+            L.append("  - GENERAL only (not used for follow-ups): " + ", ".join(e["email"] for e in ci["general_emails"][:2]))
     if not r["blocked"]:
         L.append("_None._")
     if r["errors"] or r["source_errors"]:

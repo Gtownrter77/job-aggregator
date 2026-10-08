@@ -152,6 +152,12 @@ python -m aggregator qualify <job_id> [<job_id> ...] [--start YYYY-MM-DD] [--sho
 python -m aggregator followups [--all]     # list the draft queue
 python -m aggregator send-approved --dry-run   # what WOULD be sent (nothing is sent)
 python -m aggregator send-approved         # sends approved+due drafts; refuses unless enabled + SMTP set
+
+# company info (website, careers/apply link, published HR email + source); never sends anything
+python -m aggregator enrich                # all active leads (time-capped like auto)
+python -m aggregator enrich --all          # active leads + the top 50 scored jobs, no time cap
+python -m aggregator enrich <job_id> ... [--force]   # specific jobs; --force re-crawls cached companies
+python -m unittest discover -s tests       # offline tests (email classification, contact safety)
 ```
 
 Background server helpers: `scripts/serve-bg.sh`, `scripts/stop-server.sh`
@@ -172,8 +178,11 @@ Use a different config file with `-c path/to/config.yaml` or `AGGREGATOR_CONFIG=
   **Follow-ups** tab → the approval queue.
 * Every title links out to the original posting. Green source chips = direct employer ATS;
   a posting seen on several sources shows all of them.
+* The **company name** on every row opens the job page (`/jobs/<id>`): posting text, direct
+  apply link and the company card below, with a **Look up / Refresh** button. Follow-up cards
+  show the same company card.
 * JSON API: `/api/jobs?q=nurse&source=indeed&track=atlanta&region=US&sort=date&page=1`,
-  `/api/followups`, `/api/stats`, `/healthz`.
+  `/api/jobs/<id>/company`, `/api/followups`, `/api/stats`, `/healthz`.
 
 ## Configuration (`config.yaml`)
 
@@ -275,12 +284,18 @@ ISO-8601 timestamps, `INSERT ... ON CONFLICT (dedupe_hash) DO UPDATE`):
 `jobs(id, source, source_job_id, board, company, title, location, remote, salary_min,
 salary_max, salary_currency, salary_interval, job_type, url, description,
 posted_at, fetched_at, first_seen_at, seen_on, score, llm_json, dedupe_hash UNIQUE,
-track, remote_region)`
+track, remote_region, <JobSpy employer fields: job_url_direct, emails, company_url,
+company_url_direct, company_addresses, company_industry, company_num_employees, company_revenue,
+company_description, company_logo, company_rating, job_level, job_function, listing_type, ...>,
+<enrichment: company_key, apply_url, apply_url_source, recruiter_name, posting_emails, enriched_at>)`
 
 plus `leads(job_id, qualified_at, qualified_by, contact_name, contact_email,
 contact_source, status, replied_at, updated_at)` and
 `followups(id, job_id, touch 1-3, scheduled_for, status draft|approved|sent|skipped|replied,
-subject, body, edited, generator, created_at, updated_at, approved_at, sent_at, send_error)`.
+subject, body, edited, generator, created_at, updated_at, approved_at, sent_at, send_error)` and
+`companies(company_key, name, status, website, domain, careers_url, ats_board_url, hiring_emails,
+general_emails, ignored_emails, phone, hq, description, industry, size, linkedin_url,
+pages_fetched, last_enriched_at, ...)` (emails stored as JSON with their source URL).
 New columns are added to older DBs automatically on startup.
 
 * `dedupe_hash = sha1(norm(company) | norm(title) | norm(location))` — lower-cased,
@@ -370,13 +385,54 @@ qualifying, auto-qualifying, editing and approving only write rows to the
    + near-identical title), at most 2 per company per run;
 4. their 3 follow-ups are written by the local model as **drafts** (approve in the UI;
    nothing is ever sent, approved or scheduled automatically);
-5. writes `logs/digest-YYYY-MM-DD-HHMM.md` and `logs/latest-digest.md`: new-job counts,
-   top 5 matches with links and a short Fit/Gap note from the model, newly qualified jobs,
-   follow-ups due, leads blocked on a contact email, and any source errors.
+5. looks up company info for the new leads and the digest's matches (see "Company info"
+   below; capped at ~4.5 min) and fills an empty lead contact only with a published HIRING email;
+6. writes `logs/digest-YYYY-MM-DD-HHMM.md` and `logs/latest-digest.md`: new-job counts,
+   top 5 matches with links, company website/careers/apply link, hiring email + source (or
+   "no hiring email published - apply via <link>") and a short Fit/Gap note from the model,
+   newly qualified jobs, follow-ups due, leads blocked on a contact email, and any source errors.
 
 `python -m aggregator redraft <job_id>...` rewrites a lead's unedited drafts with the current
 model (hand-edited/approved drafts are untouched). A lock (`flock`) prevents overlapping runs. Logs: `logs/auto_run.log`, `logs/ollama.log`.
 Crontab: `19 7,11,16 * * 1-5 .../scripts/auto_run.sh` and `@reboot .../scripts/boot.sh`.
+
+## Company info (enrichment)
+
+`aggregator/enrich.py` fills in, for every new lead and every job shown in the digest:
+company website, careers page, **direct apply link** (the company's own ATS posting beats
+Indeed/Glassdoor/LinkedIn when it can be found), **published hiring email with the exact page
+it was read from**, a recruiter named on the posting, general inbox (labeled GENERAL), phone,
+HQ/office, one-line description, industry/size and the LinkedIn company page. Results live in
+the `companies` table (keyed by normalized company name) and on the job row (`apply_url`,
+`posting_emails`, `recruiter_name`), are shown in `logs/latest-digest.md`, on `/jobs/<id>` and
+on the follow-up cards, and are re-checked after `enrich.cache_days` (30).
+
+Sources, all free and keyless, cheapest first:
+
+1. **JobSpy's own employer fields**, now stored on every board row: `job_url_direct` (the
+   employer's apply link), `emails` (read from the posting), `company_url_direct` (website),
+   `company_addresses`, `company_industry`, `company_num_employees`, `company_revenue`,
+   `company_description`, `company_logo`, `company_url` (board/LinkedIn company page),
+   `job_level`, `job_function`, `listing_type`, ... Glassdoor descriptions are fetched at
+   search time (`jobspy.fetch_description_sites`); LinkedIn/ZipRecruiter rows saved without a
+   description get that one posting fetched on demand during enrichment.
+2. The posting text: emails, "Recruiter: Jane Doe", ATS links.
+3. Greenhouse/Lever/Ashby public APIs: the same job on the company's own board.
+4. One DuckDuckGo search (`ddgs` package) for the company domain / LinkedIn page, then up to
+   8 public pages on that domain (home, careers, jobs, contact, about) with requests +
+   BeautifulSoup. robots.txt is honored, requests are paced, a run is capped at
+   `enrich.max_seconds_per_run` (270 s) / `enrich.max_companies_per_run`.
+
+Emails are classified **HIRING** (hr@, careers@, jobs@, recruiting@, talent@, applynow@, or an
+address labeled HR/careers where it is published), **GENERAL** (info@, contact@, hello@) or
+**IGNORE** (pr@, press@, sales@, support@, new_work@, privacy@, legal@, accounting@, other
+domains, ...). Only a HIRING address found verbatim on a cited page (or the posting) is ever
+filled in as a lead's contact, and only when the lead has **no contact yet** (a manual contact is
+never overwritten; `contact_source` becomes `enrich: <source url>`). GENERAL addresses are shown
+but never used as the follow-up recipient. Nothing guesses email patterns, probes SMTP, signs in
+or submits forms; anonymous listings ("Multi Regional Roofing Company", "Confidential") are
+skipped. Any enrichment error is logged and the auto run continues. Turn it off with
+`enrich.enabled: false`.
 
 ## Resume profile
 

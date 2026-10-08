@@ -49,6 +49,11 @@ jobspy:
   country_indeed: "usa"
   linkedin_fetch_description: false   # true = slower, more LinkedIn requests
   fetch_description: false            # true = also fetch full descriptions for Glassdoor/ZipRecruiter (slower)
+  # Sites whose full posting (description, emails, employer website/HQ) is fetched at SEARCH
+  # time: one extra request per posting. Glassdoor's is cheap (~0.1 s). LinkedIn (~0.7 s) and
+  # ZipRecruiter (~0.5 s) would add minutes per run, so enrichment fetches their details on
+  # demand only for leads/top matches (see `enrich:` below). Indeed always includes them.
+  fetch_description_sites: [glassdoor]
   max_consecutive_failures: 2         # stop hitting a site after N failures in a row
   apply_metro_filter: false           # boards already filter by distance; true = also require an Atlanta-metro town
   proxies: []                         # optional, e.g. ["user:pass@host:port"]
@@ -225,6 +230,28 @@ auto:
   exclude_title_regex: "\\b(intern|internship|co-?op|college grads?|new grads?|student|apprentice)\\b"
   top_n: 5                      # matches listed in the digest
   digest_dir: "logs"
+
+# Company info for qualified leads + top digest matches (aggregator/enrich.py, `python -m
+# aggregator enrich`). Free sources only, in this order: JobSpy's employer fields + the posting
+# text (emails, recruiter name, direct apply link), the posting's ATS (Greenhouse/Lever/Ashby
+# public APIs), one DuckDuckGo search for the company domain, then a few public pages on that
+# domain (home, careers, jobs, contact, about). No API keys, no guessing email patterns, no
+# SMTP probing, no logins, no form submits. Only a HIRING address (hr@/careers@/jobs@/
+# recruiting@/talent@/applynow@... or one labeled HR/careers) read verbatim from a cited page
+# or the posting is ever filled in as a lead's contact, and only when the lead has none.
+enrich:
+  enabled: true
+  cache_days: 30                # re-crawl a company's site after this many days
+  max_seconds_per_run: 270      # time budget inside `auto` (keeps a run < ~5 extra minutes)
+  max_companies_per_run: 25     # web lookups per run (cached companies don't count)
+  max_pages_per_company: 8
+  request_timeout_seconds: 10
+  delay_seconds: 0.6            # pause between requests to the same site
+  search: true                  # DuckDuckGo search to find the company domain / LinkedIn page
+  fetch_board_details: true     # on-demand LinkedIn/ZipRecruiter/Glassdoor posting details for rows without a description
+  auto_set_contact: true        # fill an EMPTY lead contact with a HIRING email found verbatim (never overwrites)
+  top_jobs: 20                  # `enrich --top N` default / digest top matches enriched per auto run
+  user_agent: "Mozilla/5.0 (compatible; job-aggregator-enrich/1.0; +https://github.com/Gtownrter77/job-aggregator)"
 
 server:
   host: "0.0.0.0"

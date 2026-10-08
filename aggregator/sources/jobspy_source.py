@@ -7,6 +7,7 @@ never aborting the rest of the fetch.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -44,6 +45,72 @@ for _n in _LOGGER_NAMES.values():
     logging.getLogger(_n).addHandler(_capture)
 
 
+def _str(v) -> str | None:
+    """JobSpy/pandas value -> clean str (NaN/None/'' -> None; lists -> comma list)."""
+    if v is None:
+        return None
+    if isinstance(v, (list, tuple, set)):
+        items = [str(x).strip() for x in v if x is not None and str(x).strip()]
+        return ", ".join(dict.fromkeys(items)) or None
+    if isinstance(v, float):
+        return None if v != v else str(v)
+    s = str(v).strip()
+    return s if s and s.lower() not in ("nan", "none", "n/a") else None
+
+
+def _float(v) -> float | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if f != f else f
+
+
+def _int(v) -> int | None:
+    f = _float(v)
+    return None if f is None else int(f)
+
+
+def detail_sites(site: str, plan: dict, j: dict) -> bool:
+    """Fetch the full posting for this site at search time? (jobspy fetch_description)"""
+    if j.get("fetch_description") or (site == "linkedin" and j.get("linkedin_fetch_description")):
+        return True
+    sites = plan.get("fetch_description_sites")
+    if sites is None:
+        sites = j.get("fetch_description_sites") or []
+    return site in sites
+
+
+def extras(r: dict) -> dict:
+    """Employer/posting fields JobSpy returns besides the core ones (stored in jobs.* columns;
+    used by aggregator/enrich.py as the first, free source of company info)."""
+    emails = r.get("emails")
+    if isinstance(emails, str):
+        emails = [e for e in re.split(r"[,;\s]+", emails) if e]
+    emails = [e.strip().lower().rstrip(".") for e in emails] if isinstance(emails, (list, tuple)) else []
+    return {
+        "job_url_direct": _str(r.get("job_url_direct")),
+        "emails": ",".join(dict.fromkeys(e for e in emails if "@" in e)) or None,
+        "company_url": _str(r.get("company_url")),
+        "company_url_direct": _str(r.get("company_url_direct")),
+        "company_addresses": _str(r.get("company_addresses")),
+        "company_industry": _str(r.get("company_industry")),
+        "company_num_employees": _str(r.get("company_num_employees")),
+        "company_revenue": _str(r.get("company_revenue")),
+        "company_description": _str(r.get("company_description")),
+        "company_logo": _str(r.get("company_logo")),
+        "company_rating": _float(r.get("company_rating")),
+        "company_reviews_count": _int(r.get("company_reviews_count")),
+        "job_level": _str(r.get("job_level")),
+        "job_function": _str(r.get("job_function")),
+        "listing_type": _str(r.get("listing_type")),
+        "skills": _str(r.get("skills")),
+        "experience_range": _str(r.get("experience_range")),
+        "vacancy_count": _int(r.get("vacancy_count")),
+        "work_from_home_type": _str(r.get("work_from_home_type")),
+    }
+
+
 def _row_to_job(site: str, r: dict) -> dict:
     loc = r.get("location") or ""
     if isinstance(loc, float):
@@ -70,6 +137,7 @@ def _row_to_job(site: str, r: dict) -> dict:
         "url": url if isinstance(url, str) else None,
         "description": desc,
         "posted_at": to_iso(r.get("date_posted")),
+        **extras(r),
     }
 
 
@@ -85,6 +153,7 @@ def default_plan(cfg: dict) -> dict:
         "is_remote": bool(s.get("remote_only")),
         "hours_old": s.get("hours_old"),
         "results_wanted": j["results_wanted"],
+        "fetch_description_sites": j.get("fetch_description_sites"),
     }
 
 
@@ -107,8 +176,9 @@ def _run_site(site: str, plan: dict, cfg: dict, on_result) -> None:
             hours_old=plan.get("hours_old"),
             country_indeed=j["country_indeed"],
             is_remote=bool(plan.get("is_remote")),
-            linkedin_fetch_description=j["linkedin_fetch_description"],
-            fetch_description=bool(j.get("fetch_description")),
+            # per-site detail fetch (one extra request per posting): description, emails,
+            # employer website/HQ. Sites not listed get details on demand in aggregator/enrich.py.
+            fetch_description=detail_sites(site, plan, j),
             enforce_annual_salary=True,
             description_format="markdown",
             verbose=0,

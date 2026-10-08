@@ -92,6 +92,33 @@ CREATE TABLE IF NOT EXISTS followups (
 );
 CREATE INDEX IF NOT EXISTS idx_followups_due ON followups(status, scheduled_for);
 
+-- Company info for follow-ups (aggregator/enrich.py), keyed by normalized company name.
+-- Only free sources: JobSpy employer fields, the posting text, ATS APIs, a DuckDuckGo search and
+-- the company's own public pages. Emails are stored with the exact page they were read from.
+CREATE TABLE IF NOT EXISTS companies (
+    company_key      TEXT PRIMARY KEY,         -- normalize.norm_company(name)
+    name             TEXT,
+    status           TEXT,                     -- ok|partial|not_found|anonymous|error
+    website          TEXT,
+    domain           TEXT,
+    website_source   TEXT,                     -- jobspy|ats|posting|search
+    careers_url      TEXT,
+    ats_board_url    TEXT,                     -- company's own ATS board (greenhouse/lever/ashby/workday/...)
+    hiring_emails    TEXT,                     -- JSON [{email, source_url, label, context}] HIRING only
+    general_emails   TEXT,                     -- JSON, GENERAL (info@/contact@): never auto-used as a recipient
+    ignored_emails   TEXT,                     -- JSON, IGNORE (press@/sales@/support@/...) kept for transparency
+    phone            TEXT,
+    phone_source     TEXT,
+    hq               TEXT,
+    description      TEXT,                     -- one line
+    industry         TEXT,
+    size             TEXT,
+    linkedin_url     TEXT,
+    pages_fetched    TEXT,                     -- JSON [url, ...] pages actually read
+    notes            TEXT,
+    last_enriched_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS runs (
     run_id       TEXT PRIMARY KEY,
     started_at   TEXT NOT NULL,
@@ -99,11 +126,44 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 """
 
+# Extra employer/posting fields JobSpy returns (all optional; NULL for ATS rows).
+JOBSPY_COLS = {
+    "job_url_direct": "TEXT",        # the employer's own apply link when the board exposes it
+    "emails": "TEXT",                # comma list JobSpy extracted from the posting text
+    "company_url": "TEXT",           # the board's company page (Indeed/LinkedIn/Glassdoor/Zip)
+    "company_url_direct": "TEXT",    # the company's own website
+    "company_addresses": "TEXT",
+    "company_industry": "TEXT",
+    "company_num_employees": "TEXT",
+    "company_revenue": "TEXT",
+    "company_description": "TEXT",
+    "company_logo": "TEXT",
+    "company_rating": "REAL",
+    "company_reviews_count": "INTEGER",
+    "job_level": "TEXT",
+    "job_function": "TEXT",
+    "listing_type": "TEXT",
+    "skills": "TEXT",
+    "experience_range": "TEXT",
+    "vacancy_count": "INTEGER",
+    "work_from_home_type": "TEXT",
+}
+# Per-posting enrichment results (aggregator/enrich.py); never written by the fetch upsert.
+ENRICH_COLS = {
+    "company_key": "TEXT",
+    "apply_url": "TEXT",             # best direct apply link (company ATS > board)
+    "apply_url_source": "TEXT",      # ats|jobspy_direct|ats_board_match|careers|posting
+    "recruiter_name": "TEXT",        # named on the posting
+    "posting_emails": "TEXT",        # JSON [{email, class, source_url, context}]
+    "enriched_at": "TEXT",
+}
+
 JOB_COLS = [
     "id", "source", "source_job_id", "board", "company", "title", "location", "remote",
     "salary_min", "salary_max", "salary_currency", "salary_interval", "job_type",
     "url", "description", "posted_at", "fetched_at", "first_seen_at", "seen_on",
     "score", "llm_json", "dedupe_hash", "track", "remote_region",
+    *JOBSPY_COLS,
 ]
 
 # On a dedupe-hash collision keep the original row (and its id/source) but
@@ -132,8 +192,8 @@ ON CONFLICT (dedupe_hash) DO UPDATE SET
         THEN excluded.description ELSE jobs.description END,
     seen_on = CASE
         WHEN (',' || jobs.seen_on || ',') LIKE ('%,' || excluded.source || ',%') THEN jobs.seen_on
-        ELSE jobs.seen_on || ',' || excluded.source END
-"""
+        ELSE jobs.seen_on || ',' || excluded.source END,
+""" + ",\n".join(f"    {c} = COALESCE(excluded.{c}, jobs.{c})" for c in JOBSPY_COLS) + "\n"
 
 
 def connect(cfg: dict) -> sqlite3.Connection:
@@ -150,7 +210,7 @@ def connect(cfg: dict) -> sqlite3.Connection:
 def _migrate(conn):
     """Additive column migrations for DBs created by older versions."""
     wanted = {"followups": {"generator": "TEXT"},
-              "jobs": {"board": "TEXT", "track": "TEXT", "remote_region": "TEXT"}}
+              "jobs": {"board": "TEXT", "track": "TEXT", "remote_region": "TEXT", **JOBSPY_COLS, **ENRICH_COLS}}
     for table, cols in wanted.items():
         have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
         for col, typ in cols.items():
@@ -164,6 +224,7 @@ def _migrate(conn):
                     conn.executemany("UPDATE jobs SET remote_region = ? WHERE id = ?",
                                      [(remote_region(r[1], description=r[2]), r[0]) for r in rows])
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_track ON jobs(track)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_company_key ON jobs(company_key)")
     conn.commit()
 
 

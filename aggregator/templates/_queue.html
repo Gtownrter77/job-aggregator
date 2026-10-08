@@ -6,14 +6,16 @@
     <b>Touch {{ f.touch }}/3</b>
     <span class="muted">scheduled {{ f.scheduled_for }}</span>
     <span>·</span>
-    <a href="{{ f.url }}" target="_blank" rel="noopener">{{ f.title }}</a> <span class="muted">at {{ f.company }} — {{ f.location }}</span>
+    <a href="{{ f.url }}" target="_blank" rel="noopener">{{ f.title }}</a> <span class="muted">at <a href="/jobs/{{ f.job_id }}">{{ f.company }}</a> — {{ f.location }}</span>
   </div>
   <div class="row muted" style="margin-top:4px">
     To: {% if f.contact_email %}{{ f.contact_name or '' }} &lt;{{ f.contact_email }}&gt;
-        {% if f.contact_source == 'posting' %}<span class="pill">from posting text</span>{% endif %}
+        {% if f.contact_source == 'posting' %}<span class="pill">from posting text</span>
+        {% elif (f.contact_source or '').startswith('enrich: ') %}<span class="pill">auto-found: <a href="{{ f.contact_source[8:] }}" target="_blank" rel="noopener">source</a></span>{% endif %}
     {% else %}<span class="needs">needs contact</span>{% endif %}
   </div>
   {% if open %}
+  {% with ci = qd.ci.get(f.job_id) %}{% if ci %}<div class="cibox">{% include "_company.html" %}</div>{% endif %}{% endwith %}
   <form class="contact" hx-post="/leads/{{ f.job_id }}/contact" hx-target="#queue">
     <input name="contact_name" value="{{ f.contact_name or '' }}" placeholder="Contact name (optional)">
     <input name="contact_email" value="{{ f.contact_email or '' }}" placeholder="Recruiter / hiring email (only if known)">
@@ -47,7 +49,9 @@
   <tr>
     <td>{{ f.scheduled_for }}</td><td>{{ f.touch }}/3</td><td><span class="pill {{ f.status }}">{{ f.status }}</span></td>
     <td><a href="{{ f.url }}" target="_blank" rel="noopener">{{ f.title }}</a> <span class="muted">· {{ f.company }}</span></td>
-    <td>{% if f.contact_email %}{{ f.contact_email }}{% else %}<span class="needs">needs contact</span>{% endif %}</td>
+    <td>{% if f.contact_email %}{{ f.contact_email }}{% else %}{% set ci = qd.ci.get(f.job_id) or {} %}<span class="needs">needs contact</span>
+        {% if ci.apply_url %}<div class="muted">no hiring email published · <a href="{{ ci.apply_url }}" target="_blank" rel="noopener">apply link</a></div>{% endif %}{% endif %}
+        <div class="muted"><a href="/jobs/{{ f.job_id }}">company info</a></div></td>
     <td><button hx-post="/followups/{{ f.id }}/skip" hx-target="#queue">Skip</button>
         <button class="warn" hx-post="/leads/{{ f.job_id }}/replied" hx-target="#queue" hx-confirm="Mark replied? Stops remaining touches.">Replied</button></td>
   </tr>

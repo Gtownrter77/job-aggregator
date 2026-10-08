@@ -1,0 +1,41 @@
+{# Company info card. Context: ci = enrich.brief(conn, job_id). #}
+<div class="ci" id="ci-{{ ci.job_id }}">
+  <div class="ci-head">
+    <b>Company info</b>
+    {% if ci.status == 'anonymous' %}<span class="ci-pill warn">anonymous listing</span>
+    {% elif ci.status == 'not_found' %}<span class="ci-pill warn">no website found</span>
+    {% elif ci.status == 'not enriched' %}<span class="ci-pill">not looked up yet</span>
+    {% elif ci.status == 'partial' %}<span class="ci-pill">partial</span>{% endif %}
+    {% if ci.last_enriched_at %}<span class="muted">checked {{ ci.last_enriched_at[:10] }}</span>{% endif %}
+    <button class="ci-btn" hx-post="/jobs/{{ ci.job_id }}/enrich" hx-target="#ci-{{ ci.job_id }}" hx-swap="outerHTML"
+            title="Look up website, careers page, direct apply link and published HR email (free sources; never sends anything)">
+      {{ 'Refresh' if ci.last_enriched_at else 'Look up' }}</button>
+  </div>
+  {% if ci.description %}<div class="muted">{{ ci.description }}</div>{% endif %}
+  <dl>
+    <dt>Apply</dt><dd>{% if ci.apply_url %}<a href="{{ ci.apply_url }}" target="_blank" rel="noopener">{{ ci.apply_url | truncate(80, true) }}</a>
+        {% if ci.apply_url_source %}<span class="muted">({{ ci.apply_url_source }})</span>{% endif %}{% else %}-{% endif %}</dd>
+    <dt>Hiring email</dt><dd>
+      {% if ci.hiring_emails %}
+        {% for e in ci.hiring_emails[:3] %}<div><b>{{ e.email }}</b>{% if e.source == 'posting' and ci.recruiter_name %} ({{ ci.recruiter_name }}){% endif %}
+          <span class="muted">HIRING · source: <a href="{{ e.source_url }}" target="_blank" rel="noopener">{{ e.source_url | truncate(70, true) }}</a></span></div>{% endfor %}
+      {% else %}<span class="needs">no hiring email published</span>
+        <span class="muted">apply via {% if ci.apply_url %}<a href="{{ ci.apply_url }}" target="_blank" rel="noopener">the link above</a>{% else %}the posting{% endif %}</span>{% endif %}
+    </dd>
+    {% if ci.recruiter_name %}<dt>Recruiter</dt><dd>{{ ci.recruiter_name }} <span class="muted">(named on the posting)</span></dd>{% endif %}
+    {% if ci.general_emails %}<dt>General</dt><dd>{% for e in ci.general_emails[:3] %}{{ e.email }}{% if not loop.last %}, {% endif %}{% endfor %}
+        <span class="ci-pill">GENERAL - never used as the follow-up recipient</span></dd>{% endif %}
+    <dt>Website</dt><dd>{% if ci.website %}<a href="{{ ci.website }}" target="_blank" rel="noopener">{{ ci.website }}</a>
+        {% if ci.website_source %}<span class="muted">(via {{ ci.website_source }})</span>{% endif %}{% else %}-{% endif %}</dd>
+    {% if ci.careers_url or ci.ats_board_url %}<dt>Careers</dt><dd>
+      {% if ci.careers_url %}<a href="{{ ci.careers_url }}" target="_blank" rel="noopener">{{ ci.careers_url | truncate(70, true) }}</a>{% endif %}
+      {% if ci.ats_board_url %} · <a href="{{ ci.ats_board_url }}" target="_blank" rel="noopener">job board (ATS)</a>{% endif %}</dd>{% endif %}
+    {% if ci.phone %}<dt>Phone</dt><dd>{{ ci.phone }} {% if ci.phone_source %}<span class="muted">(<a href="{{ ci.phone_source }}" target="_blank" rel="noopener">source</a>)</span>{% endif %}</dd>{% endif %}
+    {% if ci.hq %}<dt>HQ / office</dt><dd>{{ ci.hq }}</dd>{% endif %}
+    {% if ci.industry or ci.size or ci.revenue %}<dt>Profile</dt><dd>{{ [ci.industry, ci.size and (ci.size ~ ' employees'), ci.revenue] | select | join(' · ') }}</dd>{% endif %}
+    {% if ci.linkedin_url %}<dt>LinkedIn</dt><dd><a href="{{ ci.linkedin_url }}" target="_blank" rel="noopener">{{ ci.linkedin_url }}</a></dd>{% endif %}
+    {% if ci.ignored_emails %}<dt>Ignored</dt><dd class="muted">{% for e in ci.ignored_emails[:4] %}{{ e.email }}{% if not loop.last %}, {% endif %}{% endfor %} (press/sales/support/other - not hiring)</dd>{% endif %}
+    {% if ci.notes %}<dt>Note</dt><dd class="muted">{{ ci.notes }}</dd>{% endif %}
+  </dl>
+  {% if msg %}<div class="muted">{{ msg }}</div>{% endif %}
+</div>

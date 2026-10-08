@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ job.title }} · {{ job.company }} · Job Aggregator</title>
+<script src="/static/htmx.min.js"></script>
+<style>
+  :root { --bg:#f7f7f8; --card:#fff; --ink:#1b1b1f; --muted:#6b6b76; --line:#e4e4e9; --acc:#2952cc; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:#111827; color:#fff; padding:14px 22px; display:flex; gap:18px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  nav a.nav { color:#c7c9d1; text-decoration:none; margin-right:12px; font-size:13.5px; }
+  nav a.nav:hover { color:#fff; }
+  main { padding:16px 22px; max-width:1100px; margin:0 auto; }
+  h2 { font-size:19px; margin:6px 0 2px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:12px 0; }
+  .muted { color:var(--muted); font-size:12.5px; }
+  .needs { background:#ffe9e6; color:#9b2a17; font-size:11.5px; padding:1px 7px; border-radius:99px; }
+  a { color:var(--acc); }
+  table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }
+  .qbtn, button { font:inherit; font-size:12.5px; padding:4px 10px; border:1px solid var(--line); border-radius:7px; background:#fff; cursor:pointer; }
+  .qbtn.on { background:#e7f6ec; color:#1b6b38; border-color:#bfe5cb; }
+  pre.desc { white-space:pre-wrap; font:13px/1.5 system-ui,sans-serif; max-height:520px; overflow:auto; }
+  .HIRING { color:#1b6b38; font-weight:600; } .GENERAL { color:#8a5a00; } .IGNORE { color:#888; }
+  {% include "_company_css.html" %}
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/" style="color:#fff;text-decoration:none">Job Aggregator</a></h1>
+  <nav><a href="/" class="nav">Jobs</a> <a href="/followups" class="nav">Follow-ups</a></nav>
+</header>
+<main>
+  <h2>{{ job.title }}</h2>
+  <div>{{ job.company }} — {{ job.location or '?' }}{% if job.salary %} · {{ job.salary }}{% endif %}
+    <span class="muted">· score {{ '%.3f' % job.score }} · {{ job.source }} · first seen {{ (job.first_seen_at or '')[:10] }}</span></div>
+  <div style="margin-top:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+    {{ qbtn | safe }}
+    {% if job.url %}<a href="{{ job.url }}" target="_blank" rel="noopener">Original posting ({{ job.source }})</a>{% endif %}
+    {% if lead %}<span class="muted">Lead contact: {% if lead.contact_email %}<b>{{ lead.contact_name or '' }} &lt;{{ lead.contact_email }}&gt;</b>
+      ({{ lead.contact_source or 'manual' }}){% else %}<span class="needs">needs contact</span>{% endif %} · <a href="/followups">follow-up drafts</a></span>{% endif %}
+  </div>
+
+  <div class="card">{% include "_company.html" %}</div>
+
+  {% if ci.hiring_emails or ci.general_emails or ci.ignored_emails %}
+  <div class="card"><b>Every address found</b> <span class="muted">(verbatim, with the page it was read from)</span>
+    <table><tr><th>Email</th><th>Class</th><th>Why</th><th>Source</th></tr>
+    {% for e in ci.hiring_emails + ci.general_emails + ci.ignored_emails %}
+      <tr><td>{{ e.email }}</td><td class="{{ e['class'] }}">{{ e['class'] }}</td><td class="muted">{{ e.why }}</td>
+          <td><a href="{{ e.source_url }}" target="_blank" rel="noopener">{{ (e.source_url or e.source) | truncate(60, true) }}</a></td></tr>
+    {% endfor %}</table></div>
+  {% endif %}
+
+  {% if ci.pages_fetched %}<div class="muted">Pages read: {% for u in ci.pages_fetched %}<a href="{{ u }}" target="_blank" rel="noopener">{{ u | truncate(60, true) }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</div>{% endif %}
+
+  {% if job.description %}<div class="card"><b>Posting</b><pre class="desc">{{ job.description }}</pre></div>
+  {% else %}<p class="muted">No description stored for this posting{% if job.source in ['linkedin','zip_recruiter','glassdoor'] %} (Look up fetches it){% endif %}.</p>{% endif %}
+</main>
+</body>
+</html>

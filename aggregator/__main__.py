@@ -1,4 +1,4 @@
-"""CLI: python -m aggregator {fetch,serve,verify-slugs,rescore,stats,qualify,followups,send-approved,auto}"""
+"""CLI: python -m aggregator {fetch,serve,verify-slugs,rescore,stats,qualify,followups,send-approved,auto,enrich}"""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +18,7 @@ def _setup_logging(verbose: bool):
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    for noisy in ("httpx", "httpcore", "urllib3"):
+    for noisy in ("httpx", "httpcore", "urllib3", "primp", "ddgs"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
@@ -148,6 +148,33 @@ def cmd_redraft(args, cfg):
             print(f"  touch {f['touch']} [{f['generator']}] {f['subject']}")
 
 
+def cmd_enrich(args, cfg):
+    from . import db, enrich
+
+    conn = db.connect(cfg)
+    if args.job_ids:
+        ids = args.job_ids
+    else:
+        ids = enrich.targets(conn, cfg, top=args.top if args.top is not None else (50 if args.all else 0), leads=True)
+    budget = args.budget if args.budget is not None else (None if not (args.all or args.job_ids) else 3600)
+    print(f"Enriching {len(ids)} job(s){' (forced re-crawl)' if args.force else ''} ...")
+    st = enrich.enrich_jobs(conn, cfg, ids, budget_s=budget, max_companies=10_000 if (args.all or args.job_ids) else None,
+                            force=args.force)
+    for jid in ids:
+        b = enrich.brief(conn, jid)
+        if not b:
+            print(f"\n{jid}: not found")
+            continue
+        lc = b.get("lead_contact") or {}
+        print(f"\n{b['company']}  [{b.get('status') or '-'}]  job {jid[:12]}")
+        for line in enrich.md_lines(b, indent="  "):
+            print(line)
+        if lc:
+            print(f"  - lead contact: {lc.get('contact_email') or 'NONE'} ({lc.get('contact_source') or '-'})")
+    print("\n" + json.dumps({k: v for k, v in st.items()}, indent=2, default=str))
+    return 0
+
+
 def cmd_auto(args, cfg):
     from .auto import main_cli
 
@@ -201,6 +228,14 @@ def main(argv=None):
     ap.add_argument("--no-fetch", action="store_true", help="skip fetching (use what's in the DB)")
     ap.add_argument("--no-qualify", action="store_true", help="don't qualify anything (digest only)")
     ap.set_defaults(func=cmd_auto)
+
+    ep = sub.add_parser("enrich", help="look up company info (website, careers/apply link, HR email + source) for leads/jobs; never sends")
+    ep.add_argument("job_ids", nargs="*", help="job ids (default: all active leads)")
+    ep.add_argument("--all", action="store_true", help="all active leads + the top 50 scored jobs, no time cap")
+    ep.add_argument("--top", type=int, help="also enrich the top N scored jobs")
+    ep.add_argument("--force", action="store_true", help="re-crawl companies even if enriched in the last enrich.cache_days")
+    ep.add_argument("--budget", type=float, help="time budget in seconds (default: enrich.max_seconds_per_run; none with --all)")
+    ep.set_defaults(func=cmd_enrich)
 
     sub.add_parser("rescore", help="recompute relevance scores after editing scoring.profile").set_defaults(func=cmd_rescore)
     sub.add_parser("stats", help="show DB counts and last run summary").set_defaults(func=cmd_stats)

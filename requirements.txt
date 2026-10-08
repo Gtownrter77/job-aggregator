@@ -6,6 +6,10 @@ pyyaml>=6.0
 scikit-learn>=1.4
 httpx>=0.27
 beautifulsoup4>=4.12
+requests>=2.31
+lxml>=5.0
+# company-info enrichment: keyless DuckDuckGo search (aggregator/enrich.py)
+ddgs>=9.16
 # optional: semantic scoring (CPU; ~1GB with torch)
 # sentence-transformers>=3.0
 python-multipart>=0.0.9

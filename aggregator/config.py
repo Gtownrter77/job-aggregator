@@ -29,6 +29,7 @@ DEFAULTS: dict[str, Any] = {
         "max_consecutive_failures": 2,
         "apply_metro_filter": False,
         "proxies": [],
+        "fetch_description_sites": ["glassdoor"],
     },
     "ats": {"enabled": True, "companies_file": "companies.yaml", "concurrency": 8, "timeout_seconds": 45},
     "metro": {"name": "", "towns": [], "towns_require_state": [], "state_tokens": ["GA", "Georgia"]},
@@ -52,6 +53,10 @@ DEFAULTS: dict[str, Any] = {
     "auto": {"min_score": 0.04, "require_direct_fit": True, "max_qualify_per_run": 5, "max_per_company_per_run": 2,
              "new_within_hours": 72, "exclude_title_regex": r"\b(intern|internship|co-?op|college grads?|new grads?|student|apprentice)\b",
              "top_n": 5, "digest_dir": "logs"},
+    "enrich": {"enabled": True, "cache_days": 30, "max_seconds_per_run": 270, "max_companies_per_run": 25,
+               "max_pages_per_company": 8, "request_timeout_seconds": 10, "delay_seconds": 0.6, "search": True,
+               "fetch_board_details": True, "auto_set_contact": True, "top_jobs": 20,
+               "user_agent": "Mozilla/5.0 (compatible; job-aggregator-enrich/1.0; +https://github.com/Gtownrter77/job-aggregator)"},
     "database": {"path": "data/jobs.db"},
     "server": {"host": "0.0.0.0", "port": 8765},
     "followups": {

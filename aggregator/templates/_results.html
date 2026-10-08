@@ -9,7 +9,7 @@
         {% if r.remote %}<span class="remote">remote</span>{% endif %}
         {% for t in (r.track or '').split(',') if t %}<span class="trk">{{ {'atlanta':'ATL','remote_ai':'AI remote'}.get(t, t) }}</span>{% endfor %}
         {% if r.job_type %}<div class="muted">{{ r.job_type | replace('_',' ') | lower }}</div>{% endif %}</td>
-      <td>{{ r.company }}</td>
+      <td><a href="/jobs/{{ r.id }}" title="Job + company info (website, careers/apply link, hiring email)" style="color:inherit">{{ r.company }}</a></td>
       <td>{{ r.location }}{% if r.remote and r.remote_region %}<div class="rgn">remote: {{ r.remote_region }}</div>{% endif %}</td>
       <td>{{ r.salary }}</td>
       <td class="muted">{{ r.posted }}</td>

@@ -162,6 +162,7 @@ def run_fetch(cfg: dict, only: list[str] | None = None, only_tracks: list[str] |
                 "is_remote": True,
                 "hours_old": aj.get("hours_old"),
                 "results_wanted": aj.get("results_wanted", 25),
+                "fetch_description_sites": aj.get("fetch_description_sites"),  # None -> jobspy.fetch_description_sites
             }
 
             def ai_match(site, j):
@@ -192,7 +193,8 @@ def run_fetch(cfg: dict, only: list[str] | None = None, only_tracks: list[str] |
         if keep is prev and len(j.get("description") or "") > len(prev.get("description") or "") and prev["source"] not in ATS:
             keep, other = j, prev
         seen = set((prev.get("seen_on") or prev["source"]).split(",")) | {j["source"]}
-        for k in ("salary_min", "salary_max", "salary_currency", "salary_interval", "posted_at", "job_type", "remote_region"):
+        for k in ("salary_min", "salary_max", "salary_currency", "salary_interval", "posted_at", "job_type", "remote_region",
+                  *db.JOBSPY_COLS):
             if keep.get(k) in (None, "Unspecified") and other.get(k) is not None:
                 keep[k] = other[k]
         keep["remote"] = max(keep["remote"], other["remote"])
