@@ -272,8 +272,14 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
     out_dir = resolve(cfg["auto"].get("digest_dir") or "logs")
     out_dir.mkdir(parents=True, exist_ok=True)
     L = [f"# Job digest - {started.strftime('%a %b %d, %Y %I:%M %p')} ET", ""]
+    dash = cfg.get("dashboard") or {}
+    pages = (dash.get("pages_url") or "").rstrip("/")
+    if dash.get("publish") and pages:
+        approve_url = pages
+    else:
+        approve_url = "http://localhost:8765/followups"
     L.append(f"Run took {r['seconds']:.0f} s. Local AI: {r['ollama']}. "
-             "Nothing was sent: drafts wait for your approval at http://localhost:8765/followups")
+             f"Nothing was sent: drafts wait for your approval at {approve_url}")
     en = r.get("enrich") or {}
     if en and not en.get("skipped"):
         L.append(f"Company info: {en.get('jobs', 0)} jobs enriched in {en.get('seconds', 0):.0f} s "
