@@ -197,7 +197,7 @@ python -m aggregator snapshot --out my.html
 python -m aggregator snapshot --publish       # also push it to GitHub Pages (gh-pages branch)
 ```
 
-One self-contained HTML file (inline CSS, no JavaScript, no external fonts, ~350 KB) you can
+One self-contained HTML file (inline CSS and one small inline script, no external fonts or scripts) you can
 attach to an email and open on a phone: header counts (total, new in 24 h, active leads,
 follow-ups due), every active lead (direct apply link, posting, company website/careers, the
 published hiring email with its source, contact, touch 1/2/3 dates and approval state), the 3
@@ -205,6 +205,16 @@ follow-up drafts per lead as **mailto: buttons** that only open your own mail ap
 filled in (nothing is sent until you press Send there; nothing is approved), and the top 50 new
 jobs (last 72 h, both tracks, split evenly). All text is HTML-escaped; only http(s) links are
 clickable; postings appear as 300-character excerpts.
+
+**Filters (on the phone, no server).** A sticky bar at the top has a search box (title + company),
+a live "N of M jobs match" count, **Reset filters**, and a collapsible **Filters** panel: region
+(Atlanta / Remote AI / all), category (construction/PM, roofing/exteriors, sales, trades/field,
+engineering, AI, other; derived from title keywords, a job can be in several), has a hiring email
+(yes/no/any), follow-up status (due today / overdue / not due / none), minimum match score, posted
+within 3/7/14 days, city or county text, and sort (score, newest, follow-up due date). Every card has
+a **Not interested** button that hides it. Filter state and dismissed jobs are saved in the phone
+browser's localStorage only (nothing is sent anywhere). Default: sorted by score, dismissed hidden.
+Without JavaScript (e.g. an email preview) the filter bar is hidden and every job is listed.
 
 **Publishing (opt-in).** With `dashboard.publish: true` in `config.local.yaml`, every `auto` run
 (the 3x-daily cron) regenerates the page and force-pushes it as `index.html` + `.nojekyll` to an

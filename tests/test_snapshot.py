@@ -75,7 +75,9 @@ class Snapshot(unittest.TestCase):
 
     def test_escaping_and_no_unsafe_links(self):
         page, _ = self.build()
-        self.assertEqual(len(re.findall(r"<script", page, re.I)), 0)
+        # exactly one script: the inline filter code (no src); user data never becomes markup
+        self.assertEqual(len(re.findall(r"<script", page, re.I)), 1)
+        self.assertEqual(len(re.findall(r"<script>", page)), 1)
         self.assertNotIn("<img", page)
         self.assertNotIn("javascript:", page)
         self.assertIn("&lt;script&gt;", page)
@@ -100,6 +102,33 @@ class Snapshot(unittest.TestCase):
         ex = snapshot.excerpt("<p>Hello <b>world</b></p> **bold** " + "x " * 400)
         self.assertLessEqual(len(ex), 301)
         self.assertTrue(ex.startswith("Hello world bold"))
+
+    def test_categories_and_county(self):
+        self.assertEqual(snapshot.categories("Roofing Sales Representative"), ["roofing", "sales"])
+        self.assertEqual(snapshot.categories("Construction Project Manager"), ["construction"])
+        self.assertEqual(snapshot.categories("Applied AI Engineer"), ["engineering", "ai"])
+        self.assertEqual(snapshot.categories("HVAC Technician"), ["trades"])
+        self.assertEqual(snapshot.categories("Cashier"), ["other"])
+        self.assertEqual(snapshot.categories("Shanghai Retail Associate"), ["other"])
+        self.assertEqual(snapshot._county("Marietta, GA, US", {}), "Cobb County")
+        self.assertEqual(snapshot._county("Remote", {}), "")
+
+    def test_filter_data_attributes(self):
+        page, data = self.build()
+        self.assertIn('id="f-panel"', page)
+        self.assertIn('data-act="dismiss"', page)
+        for fid in ("f-q", "f-region", "f-cat", "f-em", "f-fu", "f-sc", "f-po", "f-place", "f-hide", "f-sort", "f-reset", "f-count"):
+            self.assertIn(f'id="{fid}"', page)
+        cards = dict(re.findall(r'data-id="([0-9a-f]{40})"[^>]*?data-fu="(\w+)"', page))
+        self.assertEqual(cards["b" * 40], "overdue")      # touch 1 on Oct 6, today Oct 8
+        self.assertEqual(cards["a" * 40], "notdue")       # first touch Oct 20
+        self.assertEqual(cards["c" * 40], "none")         # not a lead
+        self.assertIn('data-due="2026-10-20"', page)
+        self.assertIn('data-tr="remote_ai"', page)
+        self.assertIn('data-place="atlanta, ga fulton county"', page)
+        self.assertIn('data-po="2026-10-07"', page)
+        self.assertIn('data-em="1"', page)               # lead a has a contact email
+        self.assertIn('<body data-today="2026-10-08">', page)
 
     def test_publish_refuses_main(self):
         cfg = copy.deepcopy(self.cfg)

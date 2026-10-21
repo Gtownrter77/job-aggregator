@@ -1,7 +1,10 @@
 """Self-contained, phone-friendly HTML snapshot of the dashboard (`python -m aggregator snapshot`).
 
-One .html file: all CSS inline, no JavaScript, no external fonts/CSS, no server needed. Good for
-opening from an email attachment or a static host on a phone. Contents: header counts, every
+One .html file: all CSS and JS inline, no external fonts/CSS/scripts, no server needed. Good for
+opening from an email attachment or a static host on a phone. A small inline script adds client-side
+filters (search, region, category, hiring email, follow-up status, score, posted within, city/county,
+"Not interested"), sorting and a match count; filter state and dismissed jobs live in the phone's
+localStorage only. Without JS (e.g. an email preview) every job is simply listed. Contents: header counts, every
 active lead (links, company info, follow-up status) with its 3 drafts as mailto: buttons, and the
 top new jobs from both tracks. Every piece of text is HTML-escaped (Jinja autoescape); only
 http(s) URLs become links.
@@ -16,6 +19,7 @@ from __future__ import annotations
 
 import html as _html
 import logging
+import math
 import re
 import shutil
 import subprocess
@@ -28,6 +32,7 @@ from zoneinfo import ZoneInfo
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from . import db, enrich
+from .compose import county_of
 from .config import ROOT, resolve
 
 log = logging.getLogger(__name__)
@@ -107,6 +112,49 @@ def _tracks(t: str | None) -> list[str]:
 
 TRACK_LABEL = {"atlanta": "Atlanta", "remote_ai": "Remote AI"}
 
+# Job categories for the filter, derived from title keywords (the DB has no category column).
+# A job can be in several (e.g. "Roofing Sales Rep" is roofing + sales); no match -> "other".
+CATEGORIES = [
+    ("construction", "Construction / PM", r"construct|project (?:manager|coordinator|engineer|executive|director|lead)|"
+     r"\bpm\b|\bapm\b|superintendent|\bsuper\b|foreman|forem[ae]n|estimat|precon|scheduler|site (?:manager|lead)|"
+     r"general contractor|\bgc\b|remodel|renovat|builder|building|field engineer|quality control|\bqa/qc\b|\bqc\b|"
+     r"\behs\b|safety|facilit|structural|steel|field operations|implementation manager"),
+    ("roofing", "Roofing / exteriors", r"roof|siding|gutter|exterior|storm|shingle|window|restoration"),
+    ("sales", "Sales", r"sales|seller|account (?:executive|manager)|business development|\bbdr\b|\bsdr\b|canvass|"
+     r"door[- ]to[- ]door|outside rep|territory|lead generat|\brep\b|representative|closer|consultant"),
+    ("trades", "Trades / field", r"technician|\btech\b|plumb|electric|hvac|carpent|labor|installer|install|\bcdl\b|"
+     r"driver|maintenance|welder|weld|mechanic|crew|painter|paint|helper|apprentice|journeyman|operator|field service|"
+     r"inspector|framer|drywall|concrete|mason|landscap|cabinet|erosion"),
+    ("engineering", "Engineering", r"engineer|developer|software|devops|architect|programmer|\bsre\b|data scien"),
+    ("ai", "AI", r"\bai\b|a\.i\.|artificial intelligence|machine learning|\bml\b|\bllm|genai|gen ai|generative|"
+     r"deep learning|\bnlp\b|computer vision"),
+]
+CATEGORY_LABEL = {k: label for k, label, _ in CATEGORIES} | {"other": "Other"}
+_CAT_RE = [(k, re.compile(rx, re.I)) for k, _, rx in CATEGORIES]
+
+
+def categories(title: str | None) -> list[str]:
+    t = title or ""
+    found = [k for k, rx in _CAT_RE if rx.search(t)]
+    return found or ["other"]
+
+
+def _iso_day(v: str | None) -> str:
+    try:
+        return date.fromisoformat(str(v or "")[:10]).isoformat()
+    except ValueError:
+        return ""
+
+
+def _county(location: str | None, cfg: dict | None) -> str:
+    """'Marietta, GA, US' -> 'Cobb County' (metro-Atlanta towns only; '' when unknown)."""
+    loc = (location or "").strip()
+    m = re.search(r"\b([A-Z][A-Za-z]+)\s+County\b", loc)
+    if m:
+        return f"{m.group(1)} County"
+    c = county_of(loc.split(",")[0], cfg or {}) if loc else ""
+    return f"{c} County" if c else ""
+
 
 # ---------------------------------------------------------------- data
 def _touch_state(f: dict, today: date) -> dict:
@@ -146,14 +194,25 @@ def _company(b: dict) -> dict:
     }
 
 
-def _job_view(j: dict, b: dict) -> dict:
+def _job_view(j: dict, b: dict, cfg: dict | None = None) -> dict:
+    ci = _company(b) if b else _company({})
+    loc = j.get("location") or ("Remote" if j.get("remote") else "")
+    county = _county(j.get("location"), cfg)
+    cats = categories(j.get("title"))
     return {
         "id": j["id"], "company": j.get("company") or "(company not listed)", "title": j.get("title") or "",
         "location": j.get("location") or ("Remote" if j.get("remote") else ""), "remote": bool(j.get("remote")),
         "score": float(j.get("score") or 0), "posted": fmt_day(j.get("posted_at")) or "unknown",
         "first_seen": fmt_day(j.get("first_seen_at")), "posting": safe_url(j.get("url")),
         "tracks": [TRACK_LABEL.get(t, t) for t in _tracks(j.get("track"))], "source": j.get("source") or "",
-        "excerpt": excerpt(j.get("description")), "ci": _company(b) if b else _company({}),
+        "excerpt": excerpt(j.get("description")), "ci": ci,
+        # filter data (data-* attributes in the template)
+        "track_keys": _tracks(j.get("track")), "county": county, "cats": cats,
+        "cat_labels": [CATEGORY_LABEL[c] for c in cats],
+        "posted_iso": _iso_day(j.get("posted_at")) or _iso_day(j.get("first_seen_at")),
+        "search": f"{j.get('title') or ''} {j.get('company') or ''}".lower(),
+        "place": f"{loc} {county}".lower().strip(),
+        "has_email": bool(ci["hiring_email"]), "fu_state": "none", "due_iso": "",
     }
 
 
@@ -168,7 +227,7 @@ def collect(conn, cfg: dict, now: datetime | None = None, new_limit: int = 50, n
     for r in conn.execute("SELECT l.*, j.* FROM leads l JOIN jobs j ON j.id = l.job_id WHERE l.status = 'active'"):
         r = dict(r)
         b = enrich.brief(conn, r["job_id"])
-        v = _job_view(r, b)
+        v = _job_view(r, b, cfg)
         touches = [_touch_state(dict(f), today) for f in conn.execute(
             "SELECT id, touch, scheduled_for, status, subject, body, approved_at, sent_at FROM followups"
             " WHERE job_id = ? ORDER BY touch", (r["job_id"],))]
@@ -185,6 +244,11 @@ def collect(conn, cfg: dict, now: datetime | None = None, new_limit: int = 50, n
             overdue=any(t["overdue"] for t in due), next_touch=nxt,
             sort_due=min((t["date"] for t in due), default=None),
         )
+        overdue = v["overdue"]
+        v["fu_state"] = "overdue" if overdue else "today" if due else "notdue" if nxt else "none"
+        v["due_iso"] = min((t["date"] for t in touches if t["pending"]), default=None)
+        v["due_iso"] = v["due_iso"].isoformat() if v["due_iso"] else ""
+        v["has_email"] = bool(v["ci"]["hiring_email"] or to)
         leads.append(v)
     leads.sort(key=lambda x: (x["sort_due"] is None, -x["score"], x["company"].lower()))
     followups_due = sum(x["due_count"] for x in leads)
@@ -221,14 +285,17 @@ def collect(conn, cfg: dict, now: datetime | None = None, new_limit: int = 50, n
     new_jobs = {}
     for t, rows in picked.items():
         rows.sort(key=lambda j: -float(j["score"] or 0))
-        new_jobs[t] = [_job_view(j, enrich.brief(conn, j["id"])) for j in rows]
+        new_jobs[t] = [_job_view(j, enrich.brief(conn, j["id"]), cfg) for j in rows]
 
     return {
         "generated": fmt_et(now), "generated_iso": now.isoformat(timespec="seconds"), "today": fmt_day(today.isoformat()),
         "counts": {"total": total, "new_24h": new_24h, "leads": len(leads), "followups_due": followups_due,
                    "leads_due": sum(1 for x in leads if x["due_count"]), "new_listed": sum(len(v) for v in new_jobs.values())},
         "leads": leads, "new_jobs": new_jobs, "new_hours": new_hours, "track_label": TRACK_LABEL,
-        "mailto_note": MAILTO_NOTE, "applicant": (cfg.get("followups") or {}).get("applicant_name") or "",
+        "mailto_note": MAILTO_NOTE, "categories": [(k, label) for k, label, _ in CATEGORIES] + [("other", "Other")],
+        "today_iso": today.isoformat(),
+        # top of the "minimum match score" slider: the best listed score rounded up to 0.01
+        "score_max": f"{max(0.01, math.ceil(max([x['score'] for x in leads] + [j['score'] for v in new_jobs.values() for j in v] + [0.0]) * 100) / 100):.2f}", "applicant": (cfg.get("followups") or {}).get("applicant_name") or "",
     }
 
 

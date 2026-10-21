@@ -1,4 +1,7 @@
-{# Self-contained phone snapshot (aggregator/snapshot.py). No JS, no external assets. Autoescaped. #}
+{# Self-contained phone snapshot (aggregator/snapshot.py). No external assets. Autoescaped.
+   One inline script adds client-side filters/sort (state in localStorage); without JS every job is listed. #}
+{% macro fattrs(J) %} data-id="{{ J.id }}" data-q="{{ J.search }}" data-place="{{ J.place }}" data-tr="{{ J.track_keys | join(' ') }}" data-cat="{{ J.cats | join(' ') }}" data-em="{{ 1 if J.has_email else 0 }}" data-fu="{{ J.fu_state }}" data-sc="{{ '%.5f' | format(J.score) }}" data-po="{{ J.posted_iso }}" data-due="{{ J.due_iso }}"{% endmacro %}
+{% macro nope() %}<button type="button" class="btn nope" data-act="dismiss">Not interested</button>{% endmacro %}
 {% macro link(url, label, cls="btn") %}{% if url %}<a class="{{ cls }}" href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ label }}</a>{% endif %}{% endmacro %}
 {% macro company_info(ci, contact_email='') %}
 <dl class="ci">
@@ -19,7 +22,7 @@
 </dl>
 {% endmacro %}
 <!doctype html>
-<html lang="en">
+<html lang="en" class="nojs">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -79,11 +82,32 @@ details.section>summary{font-size:17px}
 .draft pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:14px;margin:8px 0;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px}
 .mailnote{font-size:13px;color:var(--muted);margin:6px 0 0}
 .ex{font-size:14px;color:#33363d;margin:8px 0 0}
+.fbar{position:sticky;top:0;z-index:20;background:#1d2a5b;color:#fff;padding:8px 10px;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.nojs .fbar,.nojs .nope{display:none!important}
+.frow{display:flex;gap:8px;max-width:760px;margin:0 auto}
+.fbar input[type=search],.fbar input[type=text],.fbar select{font:inherit;font-size:16px;min-height:44px;border-radius:10px;border:1px solid #c7ccd8;padding:8px 10px;width:100%;background:#fff;color:var(--ink)}
+.frow input[type=search]{flex:1 1 auto;min-width:0}
+.fbtn{font:inherit;font-size:15px;font-weight:700;min-height:44px;border-radius:10px;border:1px solid #fff;background:transparent;color:#fff;padding:8px 12px;white-space:nowrap}
+.fbtn.on{background:#fff;color:#1d2a5b}
+.fcount{display:flex;align-items:center;justify-content:space-between;gap:8px;max-width:760px;margin:6px auto 0;font-size:14px}
+.fcount .fbtn{min-height:36px;padding:4px 10px;font-size:14px}
+#f-panel{max-width:760px;margin:8px auto 0;max-height:62vh;overflow:auto;-webkit-overflow-scrolling:touch;display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;padding-bottom:4px}
+#f-panel[hidden]{display:none}
+#f-panel label{display:block;font-size:13px;font-weight:600;opacity:.95;min-width:0}
+#f-panel label>select,#f-panel label>input{margin-top:3px}
+#f-panel .wide{grid-column:1/-1}
+#f-panel input[type=range]{width:100%;min-height:36px;accent-color:#fff}
+#f-panel .chk{display:flex;align-items:center;gap:8px;min-height:44px;font-size:15px}
+#f-panel .chk input{width:22px;height:22px;flex:none}
+.card.dismissed{opacity:.55}
+.card[hidden],.note[hidden]{display:none}
+.btn.nope{border-color:#9aa0ad;color:var(--muted);background:#fff;font:inherit;font-size:14px;font-weight:600;flex:0 1 auto;min-width:130px}
+h2{scroll-margin-top:120px}
 footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
 @media (min-width:600px){.stats{grid-template-columns:repeat(4,1fr)}}
 </style>
 </head>
-<body>
+<body data-today="{{ d.today_iso }}">
 <header id="top">
   <h1>Job Dashboard{% if d.applicant %} · {{ d.applicant }}{% endif %}</h1>
   <div class="gen">Generated {{ d.generated }}</div>
@@ -94,13 +118,33 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
     <div class="stat"><b>{{ d.counts.followups_due }}</b><span>follow-ups due{% if d.counts.leads_due %} ({{ d.counts.leads_due }} leads){% endif %}</span></div>
   </div>
 </header>
+<div class="fbar" id="fbar" role="search">
+  <div class="frow">
+    <input type="search" id="f-q" placeholder="Search title or company" aria-label="Search title or company" autocomplete="off">
+    <button type="button" class="fbtn" id="f-toggle" aria-expanded="false" aria-controls="f-panel">Filters<span id="f-badge"></span></button>
+  </div>
+  <div class="fcount"><span id="f-count" aria-live="polite"></span><button type="button" class="fbtn" id="f-reset">Reset filters</button></div>
+  <div id="f-panel" hidden>
+    <label>Region<select id="f-region"><option value="">All</option>{% for k, v in d.track_label.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+    <label>Category<select id="f-cat"><option value="">Any</option>{% for k, v in d.categories %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+    <label>Hiring email<select id="f-em"><option value="">Any</option><option value="1">Yes</option><option value="0">No</option></select></label>
+    <label>Follow-up<select id="f-fu"><option value="">Any</option><option value="due">Due today or overdue</option><option value="today">Due today</option><option value="overdue">Overdue</option><option value="notdue">Not due yet</option><option value="none">None</option></select></label>
+    <label>Posted within<select id="f-po"><option value="">Any time</option><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option></select></label>
+    <label>Sort by<select id="f-sort"><option value="score">Best match score</option><option value="new">Newest posted</option><option value="due">Follow-up due date</option></select></label>
+    <label class="wide">Minimum match score: <b id="f-sc-v">any</b><input type="range" id="f-sc" min="0" max="{{ d.score_max }}" step="0.005" value="0"></label>
+    <label class="wide">City or county<input type="text" id="f-place" placeholder="e.g. Marietta or Cobb" autocomplete="off"></label>
+    <label class="wide chk"><input type="checkbox" id="f-hide" checked> Hide jobs I marked “Not interested”</label>
+    <button type="button" class="fbtn wide" id="f-done">Done</button>
+  </div>
+</div>
 <main>
 <nav><a href="#leads">Leads ({{ d.counts.leads }})</a><a href="#new">New jobs ({{ d.counts.new_listed }})</a></nav>
 
-<h2 id="leads">Active leads</h2>
-<p class="note">Due and overdue follow-ups first, then by match score. Follow-up drafts are inside each lead. {{ d.mailto_note }}</p>
+<h2 id="leads">Active leads <span class="sec-n" data-for="leads-list"></span></h2>
+<p class="note">Follow-up drafts are inside each lead. {{ d.mailto_note }}</p>
+<div id="leads-list">
 {% for L in d.leads %}
-<section class="card{% if L.due_count %} due{% endif %}" id="lead-{{ L.id[:12] }}">
+<section class="card{% if L.due_count %} due{% endif %}" id="lead-{{ L.id[:12] }}"{{ fattrs(L) }}>
   <div class="co">{{ L.company }}</div>
   <div class="title">{{ L.title }}</div>
   <div class="meta">{{ L.location or 'Location not listed' }} · score <b>{{ '%.3f' | format(L.score) }}</b> · posted {{ L.posted }}</div>
@@ -108,11 +152,14 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
     {% if L.overdue %}<span class="pill due">follow-up overdue</span>{% elif L.due_count %}<span class="pill due">follow-up due today</span>
     {% elif L.next_touch %}<span class="pill soon">next touch {{ L.next_touch.when }}</span>{% endif %}
     {% for t in L.tracks %}<span class="pill">{{ t }}</span>{% endfor %}
+    {% for c in L.cat_labels %}<span class="pill">{{ c }}</span>{% endfor %}
+    {% if L.county %}<span class="pill">{{ L.county }}</span>{% endif %}
   </div>
   <div class="btns">
     {% if L.ci.apply and L.ci.apply != L.posting %}{{ link(L.ci.apply, 'Apply directly', 'btn primary') }}{{ link(L.posting, 'View posting') }}
     {% else %}{{ link(L.posting or L.ci.apply, 'Apply via posting', 'btn primary') }}{% endif %}
     {{ link(L.ci.careers or L.ci.website, 'Company careers' if L.ci.careers else 'Company website') }}
+    {{ nope() }}
   </div>
   {% if L.ci.apply %}<span class="url">Apply: {{ L.ci.apply }}{% if L.ci.apply_source %} ({{ L.ci.apply_source }}){% endif %}</span>{% endif %}
   <dl class="ci">
@@ -154,21 +201,29 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
 {% else %}
 <p class="note">No active leads.</p>
 {% endfor %}
+</div>
+<p class="note empty" data-for="leads-list" hidden>No leads match these filters.</p>
 
-<h2 id="new">Top new jobs (not yet leads)</h2>
-<p class="note">First seen in the last {{ d.new_hours }} hours, highest match score first; Atlanta and remote AI tracks.</p>
+<h2 id="new">Top new jobs (not yet leads) <span class="sec-n" data-for="new-list"></span></h2>
+<p class="note">First seen in the last {{ d.new_hours }} hours; Atlanta and remote AI tracks.</p>
+<div id="new-list">
 {% for track, jobs in d.new_jobs.items() %}
-<details class="section" open>
-  <summary>{{ d.track_label.get(track, track) }} ({{ jobs | length }})</summary>
   {% for J in jobs %}
-  <div class="card">
+  <div class="card"{{ fattrs(J) }}>
     <div class="co">{{ J.company }}</div>
     <div class="title">{{ J.title }}</div>
     <div class="meta">{{ J.location or 'Location not listed' }} · score <b>{{ '%.3f' | format(J.score) }}</b> · posted {{ J.posted }}</div>
+    <div>
+      {% for t in J.tracks %}<span class="pill">{{ t }}</span>{% endfor %}
+      {% for c in J.cat_labels %}<span class="pill">{{ c }}</span>{% endfor %}
+      {% if J.county %}<span class="pill">{{ J.county }}</span>{% endif %}
+      {% if J.ci.hiring_email %}<span class="pill ok">hiring email</span>{% endif %}
+    </div>
     <div class="btns">
       {% if J.ci.apply and J.ci.apply != J.posting %}{{ link(J.ci.apply, 'Apply directly', 'btn primary') }}{{ link(J.posting, 'View posting') }}
       {% else %}{{ link(J.posting or J.ci.apply, 'Apply via posting', 'btn primary') }}{% endif %}
       {{ link(J.ci.careers or J.ci.website, 'Company careers' if J.ci.careers else 'Company website') }}
+      {{ nope() }}
     </div>
     <details>
       <summary>Company info &amp; excerpt</summary>
@@ -176,11 +231,10 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
       {% if J.excerpt %}<p class="ex">{{ J.excerpt }}</p>{% endif %}
     </details>
   </div>
-  {% else %}
-  <p class="note">No new jobs on this track.</p>
   {% endfor %}
-</details>
 {% endfor %}
+</div>
+<p class="note empty" data-for="new-list"{% if d.counts.new_listed %} hidden{% endif %}>{% if d.counts.new_listed %}No new jobs match these filters.{% else %}No new jobs right now.{% endif %}</p>
 
 <footer>
   {% if updates_by_email %}Snapshot — updates arrive by email after each check{% else %}Snapshot from {{ d.generated }}{% endif %}
@@ -188,5 +242,129 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
   <br><a href="#top">Back to top</a>
 </footer>
 </main>
+<script>
+{% raw %}
+(function () {
+  "use strict";
+  var doc = document.documentElement;
+  doc.className = doc.className.replace(/\bnojs\b/, "js");
+  var KEY = "jobdash.filters.v1", DKEY = "jobdash.dismissed.v1";
+  var DEF = {q: "", region: "", cat: "", em: "", fu: "", po: "", sort: "score", sc: "0", place: "", hide: true};
+  function load(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
+  function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  var st = Object.assign({}, DEF, load(KEY, {}));
+  var dismissed = load(DKEY, {});
+  if (typeof dismissed !== "object" || Array.isArray(dismissed)) dismissed = {};
+  var $ = function (id) { return document.getElementById(id); };
+  var today = Date.parse(document.body.getAttribute("data-today") || "") || Date.now();
+  var lists = ["leads-list", "new-list"].map($).filter(Boolean);
+  var cards = [];
+  lists.forEach(function (box) {
+    Array.prototype.forEach.call(box.querySelectorAll(".card[data-id]"), function (el, i) {
+      var po = el.getAttribute("data-po");
+      cards.push({el: el, box: box, i: i, id: el.getAttribute("data-id"), q: el.getAttribute("data-q") || "",
+        place: el.getAttribute("data-place") || "", tr: " " + (el.getAttribute("data-tr") || "") + " ",
+        cat: " " + (el.getAttribute("data-cat") || "") + " ", em: el.getAttribute("data-em"),
+        fu: el.getAttribute("data-fu"), sc: parseFloat(el.getAttribute("data-sc")) || 0, po: po,
+        age: po ? Math.floor((today - Date.parse(po)) / 864e5) : null, due: el.getAttribute("data-due") || "",
+        btn: el.querySelector('[data-act="dismiss"]')});
+    });
+  });
+  var ctl = {q: $("f-q"), region: $("f-region"), cat: $("f-cat"), em: $("f-em"), fu: $("f-fu"), po: $("f-po"),
+    sort: $("f-sort"), sc: $("f-sc"), place: $("f-place"), hide: $("f-hide")};
+  function toUI() {
+    Object.keys(ctl).forEach(function (k) {
+      if (k === "hide") ctl[k].checked = !!st.hide; else ctl[k].value = st[k];
+      if (k !== "hide" && ctl[k].tagName === "SELECT" && ctl[k].selectedIndex < 0) { st[k] = DEF[k]; ctl[k].value = DEF[k]; }
+    });
+  }
+  function fromUI() {
+    Object.keys(ctl).forEach(function (k) { st[k] = k === "hide" ? ctl[k].checked : ctl[k].value; });
+  }
+  var cmp = {
+    score: function (a, b) { return b.sc - a.sc || a.i - b.i; },
+    "new": function (a, b) { return (b.po || "").localeCompare(a.po || "") || b.sc - a.sc; },
+    due: function (a, b) {
+      if (!a.due !== !b.due) return a.due ? -1 : 1;
+      return a.due.localeCompare(b.due) || b.sc - a.sc;
+    }
+  };
+  var lastSort = null;
+  function sortCards() {
+    if (lastSort === st.sort) return;
+    lastSort = st.sort;
+    var f = cmp[st.sort] || cmp.score;
+    lists.forEach(function (box) {
+      cards.filter(function (c) { return c.box === box; }).sort(f).forEach(function (c) { box.appendChild(c.el); });
+    });
+  }
+  function words(s) { return s.toLowerCase().split(/\s+/).filter(Boolean); }
+  function apply() {
+    var qw = words(st.q), pw = words(st.place), min = parseFloat(st.sc) || 0, days = parseInt(st.po, 10) || 0;
+    var shown = 0, hiddenDismissed = 0, per = {};
+    cards.forEach(function (c) {
+      var d = !!dismissed[c.id];
+      var ok = qw.every(function (w) { return c.q.indexOf(w) >= 0; }) &&
+        pw.every(function (w) { return c.place.indexOf(w) >= 0; }) &&
+        (!st.region || c.tr.indexOf(" " + st.region + " ") >= 0) &&
+        (!st.cat || c.cat.indexOf(" " + st.cat + " ") >= 0) &&
+        (!st.em || c.em === st.em) &&
+        (!st.fu || (st.fu === "due" ? (c.fu === "today" || c.fu === "overdue") : c.fu === st.fu)) &&
+        c.sc + 1e-9 >= min &&
+        (!days || (c.age !== null && c.age <= days));
+      if (ok && d && st.hide) { ok = false; hiddenDismissed++; }
+      c.el.hidden = !ok;
+      c.el.classList.toggle("dismissed", d);
+      if (c.btn) c.btn.textContent = d ? "Undo not interested" : "Not interested";
+      if (ok) { shown++; per[c.box.id] = (per[c.box.id] || 0) + 1; }
+    });
+    sortCards();
+    lists.forEach(function (box) {
+      var tot = cards.filter(function (c) { return c.box === box; }).length, n = per[box.id] || 0;
+      Array.prototype.forEach.call(document.querySelectorAll('.sec-n[data-for="' + box.id + '"]'), function (e) {
+        e.textContent = "(" + (n === tot ? tot : n + " of " + tot) + ")";
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.empty[data-for="' + box.id + '"]'), function (e) {
+        e.hidden = n > 0;
+      });
+    });
+    var active = ["region", "cat", "em", "fu", "po", "place"].filter(function (k) { return st[k]; }).length +
+      (min > 0 ? 1 : 0) + (st.q ? 1 : 0) + (st.hide ? 0 : 1);
+    $("f-badge").textContent = active ? " (" + active + ")" : "";
+    $("f-toggle").classList.toggle("on", active > 0);
+    $("f-sc-v").textContent = min > 0 ? "≥ " + min.toFixed(3) : "any";
+    $("f-count").textContent = shown + " of " + cards.length + " jobs match" +
+      (hiddenDismissed ? " · " + hiddenDismissed + " not-interested hidden" : "");
+    save(KEY, st);
+  }
+  var timer = null;
+  function onInput(e) {
+    fromUI();
+    clearTimeout(timer);
+    if (e && e.target && e.target.type === "search" || e && e.target && e.target.type === "text") timer = setTimeout(apply, 120);
+    else apply();
+  }
+  Object.keys(ctl).forEach(function (k) {
+    ctl[k].addEventListener(k === "q" || k === "place" || k === "sc" ? "input" : "change", onInput);
+  });
+  $("f-reset").addEventListener("click", function () { st = Object.assign({}, DEF); toUI(); apply(); });
+  var panel = $("f-panel"), tog = $("f-toggle");
+  function setPanel(open) { panel.hidden = !open; tog.setAttribute("aria-expanded", open ? "true" : "false"); }
+  tog.addEventListener("click", function () { setPanel(panel.hidden); });
+  $("f-done").addEventListener("click", function () { setPanel(false); });
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest('[data-act="dismiss"]');
+    if (!b) return;
+    var card = b.closest(".card[data-id]"), id = card && card.getAttribute("data-id");
+    if (!id) return;
+    if (dismissed[id]) delete dismissed[id]; else dismissed[id] = Date.now();
+    save(DKEY, dismissed);
+    apply();
+  });
+  toUI();
+  apply();
+})();
+{% endraw %}
+</script>
 </body>
 </html>
