@@ -102,8 +102,22 @@ details.section>summary{font-size:17px}
 .card.dismissed{opacity:.55}
 .card[hidden],.note[hidden]{display:none}
 .btn.nope{border-color:#9aa0ad;color:var(--muted);background:#fff;font:inherit;font-size:14px;font-weight:600;flex:0 1 auto;min-width:130px}
+.btn.approve{border-color:#5b6475;color:#1d2a5b;background:#eef0f4;font:inherit;font-size:14px;font-weight:600;flex:1 1 130px}
+.btn.approve.on{background:#1d2a5b;border-color:#1d2a5b;color:#fff}
+.btn.mail{font-size:17px;letter-spacing:.01em}
+.warnbox{background:var(--soon-bg);color:var(--soon);border:1px solid #f0d48a;border-radius:8px;padding:8px 10px;font-size:13px;font-weight:600;margin:8px 0 0}
+.fpresets{display:flex;flex-wrap:wrap;gap:6px;max-width:760px;margin:6px auto 0}
+.fpresets .fbtn{min-height:36px;padding:4px 12px;font-size:14px}
+.abar{display:none;position:sticky;bottom:0;z-index:25;background:#146c2e;color:#fff;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));box-shadow:0 -2px 8px rgba(0,0,0,.2)}
+.abar.show{display:block}
+.abar .inner{max-width:760px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.abar b{font-size:15px;flex:1 1 auto}
+.abar .fbtn{border-color:#fff;color:#fff;min-height:40px;padding:6px 12px;font-size:14px}
+.abar .fbtn.solid{background:#fff;color:#146c2e}
+.nojs .abar,.nojs .approve{display:none!important}
 h2{scroll-margin-top:120px}
 footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
+body{padding:0 0 72px}
 @media (min-width:600px){.stats{grid-template-columns:repeat(4,1fr)}}
 </style>
 </head>
@@ -124,11 +138,14 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
     <button type="button" class="fbtn" id="f-toggle" aria-expanded="false" aria-controls="f-panel">Filters<span id="f-badge"></span></button>
   </div>
   <div class="fcount"><span id="f-count" aria-live="polite"></span><button type="button" class="fbtn" id="f-reset">Reset filters</button></div>
+  <div class="fpresets">
+    <button type="button" class="fbtn" id="f-ready" title="Has contact/hiring email and follow-up due or overdue">Ready to send</button>
+  </div>
   <div id="f-panel" hidden>
     <label>Region<select id="f-region"><option value="">All</option>{% for k, v in d.track_label.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
     <label>Category<select id="f-cat"><option value="">Any</option>{% for k, v in d.categories %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
     <label>Hiring email<select id="f-em"><option value="">Any</option><option value="1">Yes</option><option value="0">No</option></select></label>
-    <label>Follow-up<select id="f-fu"><option value="">Any</option><option value="due">Due today or overdue</option><option value="today">Due today</option><option value="overdue">Overdue</option><option value="notdue">Not due yet</option><option value="none">None</option></select></label>
+    <label>Follow-up<select id="f-fu"><option value="">Any</option><option value="due">Due today or overdue</option><option value="ready">Ready to send</option><option value="today">Due today</option><option value="overdue">Overdue</option><option value="notdue">Not due yet</option><option value="none">None</option></select></label>
     <label>Posted within<select id="f-po"><option value="">Any time</option><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option></select></label>
     <label>Sort by<select id="f-sort"><option value="score">Best match score</option><option value="new">Newest posted</option><option value="due">Follow-up due date</option></select></label>
     <label class="wide">Minimum match score: <b id="f-sc-v">any</b><input type="range" id="f-sc" min="0" max="{{ d.score_max }}" step="0.005" value="0"></label>
@@ -141,7 +158,7 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
 <nav><a href="#leads">Leads ({{ d.counts.leads }})</a><a href="#new">New jobs ({{ d.counts.new_listed }})</a></nav>
 
 <h2 id="leads">Active leads <span class="sec-n" data-for="leads-list"></span></h2>
-<p class="note">Follow-up drafts are inside each lead. {{ d.mailto_note }}</p>
+<p class="note">Follow-up drafts are inside each lead. Tap <b>Send</b> to open your mail app with the draft filled in — nothing sends until you press Send there. <b>Approve for Grok Bot</b> only queues an id on this phone for you to paste into chat.</p>
 <div id="leads-list">
 {% for L in d.leads %}
 <section class="card{% if L.due_count %} due{% endif %}" id="lead-{{ L.id[:12] }}"{{ fattrs(L) }}>
@@ -178,17 +195,37 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
     {% endfor %}
   </table>
   {% if L.touches %}
-  <details>
+  {# One-tap Send for the next due draft with a contact email (outside the accordion). #}
+  {% set due_send = namespace(t=none) %}
+  {% for t in L.touches %}
+    {% if due_send.t is none and t.due and t.pending and L.contact_email %}{% set due_send.t = t %}{% endif %}
+  {% endfor %}
+  {% if due_send.t %}
+  <div class="btns">
+    <a class="btn mail" href="{{ due_send.t.mailto }}">✉ Send email · touch {{ due_send.t.touch }}</a>
+  </div>
+  <button type="button" class="btn approve" data-act="approve" data-fid="{{ due_send.t.id }}" data-short="{{ due_send.t.short_id }}" data-company="{{ L.company }}" data-title="{{ L.title }}" data-touch="{{ due_send.t.touch }}">Approve for Grok Bot</button>
+  {% if due_send.t.warn_applied %}<div class="warnbox">Says you applied — only send if you did</div>{% endif %}
+  {% endif %}
+  <details{% if due_send.t %} open{% endif %}>
     <summary>Follow-up drafts ({{ L.touches | length }})</summary>
     {% for t in L.touches %}
-    <div class="draft">
+    <div class="draft" data-fid="{{ t.id }}">
       <div class="muted">Touch {{ t.touch }} · {{ t.day }} · {{ t.when }} · {{ 'approved' if t.approved else ('not approved' if t.pending else t.status) }}</div>
       <div class="subj">{{ t.subject }}</div>
       <details>
         <summary>Show message</summary>
         <pre>{{ t.body }}</pre>
       </details>
-      <a class="btn mail" href="{{ t.mailto }}">✉ Open draft {{ t.touch }} in my email app{% if not L.contact_email %} (no recipient){% endif %}</a>
+      {% if t.warn_applied %}<div class="warnbox">Says you applied — only send if you did</div>{% endif %}
+      {% if L.contact_email %}
+      <a class="btn mail" href="{{ t.mailto }}">✉ Send{% if t.due and t.pending %} · due{% endif %}</a>
+      {% else %}
+      <a class="btn mail" href="{{ t.mailto }}">✉ Send (no recipient)</a>
+      {% endif %}
+      {% if L.contact_email and t.pending %}
+      <button type="button" class="btn approve" data-act="approve" data-fid="{{ t.id }}" data-short="{{ t.short_id }}" data-company="{{ L.company }}" data-title="{{ L.title }}" data-touch="{{ t.touch }}">Approve for Grok Bot</button>
+      {% endif %}
       <p class="mailnote">{{ d.mailto_note }}{% if not L.contact_email %} No contact email on file, so the To: line is empty.{% endif %}</p>
     </div>
     {% endfor %}
@@ -242,19 +279,28 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
   <br><a href="#top">Back to top</a>
 </footer>
 </main>
+<div class="abar" id="abar" hidden>
+  <div class="inner">
+    <b id="abar-count">0 queued for Grok Bot</b>
+    <button type="button" class="fbtn solid" id="abar-copy">Copy list for chat</button>
+    <button type="button" class="fbtn" id="abar-clear">Clear</button>
+  </div>
+</div>
 <script>
 {% raw %}
 (function () {
   "use strict";
   var doc = document.documentElement;
   doc.className = doc.className.replace(/\bnojs\b/, "js");
-  var KEY = "jobdash.filters.v1", DKEY = "jobdash.dismissed.v1";
+  var KEY = "jobdash.filters.v1", DKEY = "jobdash.dismissed.v1", AKEY = "jobdash.approve.v1";
   var DEF = {q: "", region: "", cat: "", em: "", fu: "", po: "", sort: "score", sc: "0", place: "", hide: true};
   function load(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   var st = Object.assign({}, DEF, load(KEY, {}));
   var dismissed = load(DKEY, {});
   if (typeof dismissed !== "object" || Array.isArray(dismissed)) dismissed = {};
+  var queued = load(AKEY, {});
+  if (typeof queued !== "object" || Array.isArray(queued)) queued = {};
   var $ = function (id) { return document.getElementById(id); };
   var today = Date.parse(document.body.getAttribute("data-today") || "") || Date.now();
   var lists = ["leads-list", "new-list"].map($).filter(Boolean);
@@ -277,9 +323,14 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
       if (k === "hide") ctl[k].checked = !!st.hide; else ctl[k].value = st[k];
       if (k !== "hide" && ctl[k].tagName === "SELECT" && ctl[k].selectedIndex < 0) { st[k] = DEF[k]; ctl[k].value = DEF[k]; }
     });
+    var readyBtn = $("f-ready");
+    if (readyBtn) readyBtn.classList.toggle("on", isReadyFilter());
   }
   function fromUI() {
     Object.keys(ctl).forEach(function (k) { st[k] = k === "hide" ? ctl[k].checked : ctl[k].value; });
+  }
+  function isReadyFilter() {
+    return st.fu === "ready" || (st.em === "1" && st.fu === "due");
   }
   var cmp = {
     score: function (a, b) { return b.sc - a.sc || a.i - b.i; },
@@ -299,17 +350,24 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
     });
   }
   function words(s) { return s.toLowerCase().split(/\s+/).filter(Boolean); }
+  function matchFu(c) {
+    if (!st.fu) return true;
+    if (st.fu === "ready") return (c.fu === "today" || c.fu === "overdue") && c.em === "1";
+    if (st.fu === "due") return c.fu === "today" || c.fu === "overdue";
+    return c.fu === st.fu;
+  }
   function apply() {
     var qw = words(st.q), pw = words(st.place), min = parseFloat(st.sc) || 0, days = parseInt(st.po, 10) || 0;
     var shown = 0, hiddenDismissed = 0, per = {};
+    var readyMode = st.fu === "ready";
     cards.forEach(function (c) {
       var d = !!dismissed[c.id];
       var ok = qw.every(function (w) { return c.q.indexOf(w) >= 0; }) &&
         pw.every(function (w) { return c.place.indexOf(w) >= 0; }) &&
         (!st.region || c.tr.indexOf(" " + st.region + " ") >= 0) &&
         (!st.cat || c.cat.indexOf(" " + st.cat + " ") >= 0) &&
-        (!st.em || c.em === st.em) &&
-        (!st.fu || (st.fu === "due" ? (c.fu === "today" || c.fu === "overdue") : c.fu === st.fu)) &&
+        (readyMode ? true : (!st.em || c.em === st.em)) &&
+        matchFu(c) &&
         c.sc + 1e-9 >= min &&
         (!days || (c.age !== null && c.age <= days));
       if (ok && d && st.hide) { ok = false; hiddenDismissed++; }
@@ -335,7 +393,10 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
     $("f-sc-v").textContent = min > 0 ? "≥ " + min.toFixed(3) : "any";
     $("f-count").textContent = shown + " of " + cards.length + " jobs match" +
       (hiddenDismissed ? " · " + hiddenDismissed + " not-interested hidden" : "");
+    var readyBtn = $("f-ready");
+    if (readyBtn) readyBtn.classList.toggle("on", isReadyFilter());
     save(KEY, st);
+    refreshApproveUI();
   }
   var timer = null;
   function onInput(e) {
@@ -348,22 +409,91 @@ footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
     ctl[k].addEventListener(k === "q" || k === "place" || k === "sc" ? "input" : "change", onInput);
   });
   $("f-reset").addEventListener("click", function () { st = Object.assign({}, DEF); toUI(); apply(); });
+  var readyEl = $("f-ready");
+  if (readyEl) readyEl.addEventListener("click", function () {
+    st = Object.assign({}, DEF, {em: "1", fu: "ready", hide: st.hide});
+    toUI();
+    apply();
+  });
   var panel = $("f-panel"), tog = $("f-toggle");
   function setPanel(open) { panel.hidden = !open; tog.setAttribute("aria-expanded", open ? "true" : "false"); }
   tog.addEventListener("click", function () { setPanel(panel.hidden); });
   $("f-done").addEventListener("click", function () { setPanel(false); });
   document.addEventListener("click", function (e) {
     var b = e.target.closest && e.target.closest('[data-act="dismiss"]');
-    if (!b) return;
-    var card = b.closest(".card[data-id]"), id = card && card.getAttribute("data-id");
-    if (!id) return;
-    if (dismissed[id]) delete dismissed[id]; else dismissed[id] = Date.now();
-    save(DKEY, dismissed);
-    apply();
+    if (b) {
+      var card = b.closest(".card[data-id]"), id = card && card.getAttribute("data-id");
+      if (!id) return;
+      if (dismissed[id]) delete dismissed[id]; else dismissed[id] = Date.now();
+      save(DKEY, dismissed);
+      apply();
+      return;
+    }
+    var a = e.target.closest && e.target.closest('[data-act="approve"]');
+    if (!a) return;
+    var fid = a.getAttribute("data-fid");
+    if (!fid) return;
+    if (queued[fid]) delete queued[fid];
+    else queued[fid] = {
+      id: fid,
+      short: a.getAttribute("data-short") || fid,
+      company: a.getAttribute("data-company") || "",
+      title: a.getAttribute("data-title") || "",
+      touch: a.getAttribute("data-touch") || ""
+    };
+    save(AKEY, queued);
+    refreshApproveUI();
+  });
+  function qlist() {
+    return Object.keys(queued).map(function (k) { return queued[k]; }).filter(Boolean);
+  }
+  function refreshApproveUI() {
+    var list = qlist();
+    var bar = $("abar");
+    if (bar) {
+      bar.hidden = list.length === 0;
+      bar.classList.toggle("show", list.length > 0);
+      var c = $("abar-count");
+      if (c) c.textContent = list.length + " queued for Grok Bot";
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('[data-act="approve"]'), function (btn) {
+      var on = !!queued[btn.getAttribute("data-fid")];
+      btn.classList.toggle("on", on);
+      btn.textContent = on ? "Queued ✓" : "Approve for Grok Bot";
+    });
+  }
+  function copyText(t) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t);
+    var ta = document.createElement("textarea");
+    ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    document.body.removeChild(ta);
+    return Promise.resolve();
+  }
+  var copyBtn = $("abar-copy");
+  if (copyBtn) copyBtn.addEventListener("click", function () {
+    var list = qlist();
+    if (!list.length) return;
+    var ids = list.map(function (x) { return x.short || x.id; }).join(", ");
+    var names = list.map(function (x) {
+      return (x.short || x.id) + " " + (x.company || "company") + (x.touch ? " touch " + x.touch : "");
+    }).join("; ");
+    var text = "approve: " + ids + "\n" + names;
+    copyText(text).then(function () {
+      copyBtn.textContent = "Copied!";
+      setTimeout(function () { copyBtn.textContent = "Copy list for chat"; }, 1500);
+    });
+  });
+  var clearBtn = $("abar-clear");
+  if (clearBtn) clearBtn.addEventListener("click", function () {
+    queued = {};
+    save(AKEY, queued);
+    refreshApproveUI();
   });
   toUI();
   apply();
 })();
+
 {% endraw %}
 </script>
 </body>

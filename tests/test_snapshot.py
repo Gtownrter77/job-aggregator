@@ -137,5 +137,48 @@ class Snapshot(unittest.TestCase):
         self.assertFalse(res["ok"])
 
 
+    def test_send_ready_approve_and_applied_warn(self):
+        page, data = self.build()
+        self.assertIn(">✉ Send<", page)  # prominent Send label in drafts
+        self.assertIn('id="f-ready"', page)
+        self.assertIn('value="ready"', page)
+        self.assertIn("Ready to send", page)
+        self.assertIn("Approve for Grok Bot", page)
+        self.assertIn('id="abar"', page)
+        self.assertIn("Copy list for chat", page)
+        self.assertIn("jobdash.approve.v1", page)
+        # fixture bodies include EVIL but not "I just applied" — no warn expected
+        self.assertNotIn("Says you applied", page)
+        # lead with email has has_email; overdue lead has no email
+        self.assertTrue(any(L["has_email"] for L in data["leads"]))
+        # touches carry warn_applied / short_id
+        for L in data["leads"]:
+            for t in L["touches"]:
+                self.assertIn("warn_applied", t)
+                self.assertIn("short_id", t)
+                self.assertIn("claims_applied", t)
+
+    def test_applied_claim_warning(self):
+        conn = db.connect(self.cfg)
+        with conn:
+            jid = "e" * 40
+            _job(conn, jid, "Applied claim job", 0.8)
+            conn.execute("INSERT INTO leads (job_id, qualified_at, qualified_by, contact_email, status, updated_at)"
+                         " VALUES (?, '2026-10-01', 'manual', 'hire@co.com', 'active', 'x')", (jid,))
+            conn.execute(
+                "INSERT INTO followups (id, job_id, touch, scheduled_for, status, subject, body, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?, 'x', 'x')",
+                (f"{jid}:1", jid, 1, "2026-10-08", "draft", "Hello",
+                 "Hi team,\n\nI just applied for the role and wanted to say hello.\n\nRyan"))
+        conn.close()
+        page, data = self.build()
+        lead = next(L for L in data["leads"] if L["id"] == jid)
+        self.assertTrue(lead["touches"][0]["claims_applied"])
+        self.assertTrue(lead["touches"][0]["warn_applied"])
+        self.assertFalse(lead["applied"])
+        self.assertIn("Says you applied — only send if you did", page)
+        self.assertIn("✉ Send email · touch 1", page)  # card-level one-tap for due+email
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,15 +2,17 @@
 
 One .html file: all CSS and JS inline, no external fonts/CSS/scripts, no server needed. Good for
 opening from an email attachment or a static host on a phone. A small inline script adds client-side
-filters (search, region, category, hiring email, follow-up status, score, posted within, city/county,
-"Not interested"), sorting and a match count; filter state and dismissed jobs live in the phone's
-localStorage only. Without JS (e.g. an email preview) every job is simply listed. Contents: header counts, every
-active lead (links, company info, follow-up status) with its 3 drafts as mailto: buttons, and the
+filters (search, region, category, hiring email, follow-up status, "Ready to send", score,
+posted within, city/county, "Not interested"), sorting and a match count; filter state, dismissed
+jobs, and an optional Approve-for-Grok-Bot queue live in the phone's localStorage only. Without JS
+(e.g. an email preview) every job is simply listed. Contents: header counts, every active lead
+(links, company info, follow-up status) with its drafts as prominent mailto: Send buttons, and the
 top new jobs from both tracks. Every piece of text is HTML-escaped (Jinja autoescape); only
 http(s) URLs become links.
 
-The mailto: buttons only OPEN the user's mail app with the draft filled in; nothing is sent
-from here, nothing is approved, and the DB is opened read-only in practice (SELECTs only).
+The mailto: Send buttons only OPEN the user's mail app with the draft filled in; nothing is sent
+from here. Approve-for-Grok-Bot only queues follow-up ids in localStorage for Ryan to paste into
+chat — it never emails. The DB is opened read-only in practice (SELECTs only).
 
 `--publish` (or `dashboard.publish: true` + the `auto` run) force-pushes the page as index.html
 to an orphan `gh-pages` branch built in a temp dir; the main branch is never touched.
@@ -41,6 +43,11 @@ TEMPLATES = Path(__file__).parent / "templates"
 PAGES_BRANCH = "gh-pages"
 _EMAIL_OK = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 MAILTO_NOTE = "Opens in your email app; nothing sends until you press Send there."
+
+CLAIMS_APPLIED = re.compile(
+    r"\bI\s+just\s+applied\b|\bI\s+applied\s+today\b|\bI\s+applied\s+for\b",
+    re.I,
+)
 
 
 # ---------------------------------------------------------------- small helpers
@@ -232,8 +239,12 @@ def collect(conn, cfg: dict, now: datetime | None = None, new_limit: int = 50, n
             "SELECT id, touch, scheduled_for, status, subject, body, approved_at, sent_at FROM followups"
             " WHERE job_id = ? ORDER BY touch", (r["job_id"],))]
         to = (r.get("contact_email") or "").strip()
+        applied = any(t.get("status") == "sent" or t.get("sent_at") for t in touches)
         for t in touches:
             t["mailto"] = mailto(to, t["subject"], t["body"])
+            t["claims_applied"] = bool(CLAIMS_APPLIED.search(t.get("body") or ""))
+            t["warn_applied"] = t["claims_applied"] and not applied
+            t["short_id"] = f"{t['id'].split(':')[0][:12]}:{t['touch']}" if t.get("id") else str(t.get("touch"))
         due = [t for t in touches if t["due"]]
         nxt = next((t for t in touches if t["pending"]), None)
         src = r.get("contact_source") or ""
@@ -243,6 +254,7 @@ def collect(conn, cfg: dict, now: datetime | None = None, new_limit: int = 50, n
             qualified_by=r.get("qualified_by") or "", touches=touches, due_count=len(due),
             overdue=any(t["overdue"] for t in due), next_touch=nxt,
             sort_due=min((t["date"] for t in due), default=None),
+            applied=applied,
         )
         overdue = v["overdue"]
         v["fu_state"] = "overdue" if overdue else "today" if due else "notdue" if nxt else "none"
