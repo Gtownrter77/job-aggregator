@@ -139,7 +139,7 @@ class Snapshot(unittest.TestCase):
 
     def test_send_ready_approve_and_applied_warn(self):
         page, data = self.build()
-        self.assertIn(">✉ Send<", page)  # prominent Send label in drafts
+        self.assertIn("✉ Send", page)  # prominent Send label in drafts
         self.assertIn('id="f-ready"', page)
         self.assertIn('value="ready"', page)
         self.assertIn("Ready to send", page)
@@ -158,7 +158,8 @@ class Snapshot(unittest.TestCase):
                 self.assertIn("short_id", t)
                 self.assertIn("claims_applied", t)
 
-    def test_applied_claim_warning(self):
+    def test_applied_claim_autofilled_for_send(self):
+        """False 'I just applied' is rewritten so one-tap Send has no blanks / no warn."""
         conn = db.connect(self.cfg)
         with conn:
             jid = "e" * 40
@@ -173,11 +174,40 @@ class Snapshot(unittest.TestCase):
         conn.close()
         page, data = self.build()
         lead = next(L for L in data["leads"] if L["id"] == jid)
-        self.assertTrue(lead["touches"][0]["claims_applied"])
-        self.assertTrue(lead["touches"][0]["warn_applied"])
+        t0 = lead["touches"][0]
         self.assertFalse(lead["applied"])
-        self.assertIn("Says you applied — only send if you did", page)
-        self.assertIn("✉ Send email · touch 1", page)  # card-level one-tap for due+email
+        self.assertIn("I'm applying for the role", t0["body"])
+        self.assertNotIn("I just applied", t0["body"])
+        self.assertFalse(t0["claims_applied"])
+        self.assertFalse(t0["warn_applied"])
+        self.assertFalse(t0["needs_detail"])
+        self.assertTrue(t0["mailto"].startswith("mailto:hire@co.com?"))
+        self.assertIn("I%27m%20applying%20for%20the%20role", t0["mailto"])
+        self.assertIn("✉ Send email · touch 1", page)
+        self.assertNotIn("Says you applied", page)
+        self.assertNotIn("Needs a detail", page)
+
+    def test_needs_detail_hides_send(self):
+        conn = db.connect(self.cfg)
+        with conn:
+            jid = "f" * 40
+            _job(conn, jid, "Blank draft job", 0.7)
+            conn.execute("INSERT INTO leads (job_id, qualified_at, qualified_by, contact_email, status, updated_at)"
+                         " VALUES (?, '2026-10-01', 'manual', 'hire@co.com', 'active', 'x')", (jid,))
+            # Unfillable leftover after autofill: unknown bracket token we don't map
+            conn.execute(
+                "INSERT INTO followups (id, job_id, touch, scheduled_for, status, subject, body, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?, 'x', 'x')",
+                (f"{jid}:1", jid, 1, "2026-10-08", "draft", "Hello",
+                 "Hi team,\n\nPlease see [UnknownField] for details.\n\nRyan"))
+        conn.close()
+        page, data = self.build()
+        lead = next(L for L in data["leads"] if L["id"] == jid)
+        t0 = lead["touches"][0]
+        self.assertTrue(t0["needs_detail"])
+        self.assertEqual(t0["mailto"], "")
+        self.assertIn("Needs a detail", page)
+
 
 
 if __name__ == "__main__":

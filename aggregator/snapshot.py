@@ -34,7 +34,7 @@ from zoneinfo import ZoneInfo
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from . import db, enrich
-from .compose import county_of
+from .compose import county_of, prepare_send_copy, CLAIMS_APPLIED_RE, clean_role, display_company
 from .config import ROOT, resolve
 
 log = logging.getLogger(__name__)
@@ -44,10 +44,7 @@ PAGES_BRANCH = "gh-pages"
 _EMAIL_OK = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 MAILTO_NOTE = "Opens in your email app; nothing sends until you press Send there."
 
-CLAIMS_APPLIED = re.compile(
-    r"\bI\s+just\s+applied\b|\bI\s+applied\s+today\b|\bI\s+applied\s+for\b",
-    re.I,
-)
+CLAIMS_APPLIED = CLAIMS_APPLIED_RE  # past-tense applied claims; rewritten unless lead is applied
 
 
 # ---------------------------------------------------------------- small helpers
@@ -240,9 +237,29 @@ def collect(conn, cfg: dict, now: datetime | None = None, new_limit: int = 50, n
             " WHERE job_id = ? ORDER BY touch", (r["job_id"],))]
         to = (r.get("contact_email") or "").strip()
         applied = any(t.get("status") == "sent" or t.get("sent_at") for t in touches)
+        app_name = ((cfg.get("followups") or {}).get("applicant_name")
+                    or (cfg.get("applicant") or {}).get("name") or "Ryan Long")
+        app_phone = ((cfg.get("followups") or {}).get("applicant_phone")
+                     or (cfg.get("applicant") or {}).get("phone") or "(770) 875-7227")
+        app_email = ((cfg.get("followups") or {}).get("applicant_email")
+                     or (cfg.get("applicant") or {}).get("email") or "rlongmbox@gmail.com")
+        headline = ((cfg.get("applicant") or {}).get("headline") or "")
+        company = display_company(r.get("company"))
+        role = clean_role(r.get("title") or "")
+        contact_name = (r.get("contact_name") or "").strip()
         for t in touches:
-            t["mailto"] = mailto(to, t["subject"], t["body"])
-            t["claims_applied"] = bool(CLAIMS_APPLIED.search(t.get("body") or ""))
+            raw_subj, raw_body = t.get("subject") or "", t.get("body") or ""
+            subj, body, gaps = prepare_send_copy(
+                raw_subj, raw_body, applied=applied, company=company, role=role,
+                contact_name=contact_name, applicant_name=app_name, phone=app_phone,
+                email=app_email, headline=headline)
+            t["subject"], t["body"] = subj, body
+            t["gaps"] = gaps
+            t["needs_detail"] = bool(gaps)
+            t["send_ok"] = bool(to) and not gaps and t.get("pending")
+            t["mailto"] = "" if gaps else mailto(to, subj, body)
+            # After auto-rewrite, past-tense applied claims should be gone when not applied.
+            t["claims_applied"] = bool(CLAIMS_APPLIED.search(body))
             t["warn_applied"] = t["claims_applied"] and not applied
             t["short_id"] = f"{t['id'].split(':')[0][:12]}:{t['touch']}" if t.get("id") else str(t.get("touch"))
         due = [t for t in touches if t["due"]]

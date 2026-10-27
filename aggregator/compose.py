@@ -316,7 +316,7 @@ def template_sequence(job: dict, lead: dict, cfg: dict) -> list[dict]:
     d = details(job, cfg)
     company = d["company"]
     contact = (lead.get("contact_name") or "").strip()
-    greeting = (blocks["greetings"]["named"] if contact else blocks["greetings"]["team"]).format(name=contact, company=company)
+    greeting = greeting_for(job, lead, cfg)
     base = dict(
         greeting=greeting, name=contact or cfg["followups"]["default_contact_name"], company=company,
         title=job.get("title") or "", role=d["role"], city=d["city"], detail=d["detail"],
@@ -389,8 +389,10 @@ Never use: "circling back", "touching base", "just checking in", "hope this find
 "synergy", "rockstar", "ninja", placeholders in brackets."""
 
 LLM_TOUCH = {
-    1: ("THIS EMAIL = touch 1 of 3, sent the day the applicant applied. A warm, confident introduction: say he just applied "
-        "for the {role} role. Connect this posting detail: {detail} -> to this applicant fact: \"{fact_a}\". "
+    1: ("THIS EMAIL = touch 1 of 3, sent when the applicant is reaching out to apply (he has NOT applied yet). "
+        "A warm, confident introduction: say he is applying or would like to apply for the {role} role. "
+        "Do NOT say he already applied, 'just applied', 'applied today', or that an application landed in their system. "
+        "Connect this posting detail: {detail} -> to this applicant fact: \"{fact_a}\". "
         "Add a touch of charm (one playful half-sentence, e.g. about reading the posting twice). "
         "End with an easy, low-pressure invitation to talk."),
     2: ("THIS EMAIL = touch 2 of 3, sent a few days later. A friendly nudge that ADDS VALUE: lead with this specific "
@@ -473,7 +475,12 @@ def greeting_for(job: dict, lead: dict, cfg: dict) -> str:
     blocks = load_blocks(cfg)
     contact = (lead.get("contact_name") or "").strip()
     company = display_company(job.get("company"))
-    return (blocks["greetings"]["named"] if contact else blocks["greetings"]["team"]).format(name=contact, company=company)
+    if contact:
+        return blocks["greetings"]["named"].format(name=contact, company=company)
+    # display_company falls back to "your team"; "Hello your team team," is nonsense.
+    if company and company.lower() != "your team":
+        return blocks["greetings"]["team"].format(name=contact, company=company)
+    return "Hello,"
 
 
 def _clean_body(text: str) -> str:
@@ -898,8 +905,10 @@ def llm_sequence(job: dict, lead: dict, cfg: dict) -> list[dict] | None:
                 log.debug("unparseable model output: %r", raw[:300])
             if subject.lower() in {p["subject"].lower() for p in prev}:
                 problems.append("subject repeats an earlier touch")
-            if touch == 1 and not re.search(r"\bappl(y|ied|ying|ication)\b", body, re.I):
-                problems.append("touch 1 doesn't say he applied")
+            if touch == 1 and not re.search(r"\bappl(y|ying|ication)\b", body, re.I):
+                problems.append("touch 1 doesn't mention applying")
+            if CLAIMS_APPLIED_RE.search(f"{subject}\n{body}"):
+                problems.append("claims already applied (use I'm applying / I'd like to apply)")
             if touch == 2 and not _uses_fact(body, fact_b) and not _uses_fact(body, fact_a):
                 problems.append("touch 2 lacks a concrete accomplishment")
             if not problems:
@@ -959,6 +968,152 @@ def lint(seq: list[dict], cfg: dict, max_words: int = 125) -> list[str]:
     if len(subjects) < len(seq):
         problems.append("subject lines repeat")
     return problems
+
+
+
+# ------------------------------------------------------------------ one-tap send: no blanks
+#
+# Ready-to-send drafts must open mailto with a complete body. Prefer auto-fill from known
+# facts; only hide Send when something still cannot be filled safely.
+
+CLAIMS_APPLIED_RE = re.compile(
+    r"\bAs\s+I\s+just\s+applied\b|\bI\s+just\s+applied\b|\bI\s+applied\s+today\b|"
+    r"\bI\s+applied\s+for\b|\bI'?ve\s+applied\b|\bI\s+have\s+applied\b|"
+    r"\bI'?ve\s+submitted\s+my\s+application\b|\bI\s+submitted\s+my\s+application\b|"
+    r"\bmy\s+application\s+for\b.{0,100}?\bjust\s+landed\b",
+    re.I | re.S,
+)
+
+_META_LINE_RE = re.compile(
+    r"(?:^|\n)\s*This email is one of three[^\n]*"
+    r"|(?:^|\n)\s*Note:\s*this (?:is )?(?:touch|email) [^\n]*",
+    re.I,
+)
+
+# Gaps a phone user would still have to fill by hand (empty "Hi ," with a space before the comma;
+# bare "Hello," with no name is fine when there is no contact).
+_GAP_RE = re.compile(
+    r"\[\[.*?\]\]"
+    # bracket tokens like [Company] / [UnknownField]; ignore markdown-ish short refs
+    r"|\[(?:Company|Name|Your Name|Role|Title|Email|Phone|Position|UnknownField|[A-Z][A-Za-z]+(?:[ _][A-Za-z]+){0,3})\]"
+    r"|\{[a-z_][a-z_ ]*\}"
+    # only placeholder-style angle tokens, never HTML tags like <script>
+    r"|<(?:name|company|role|title|email|phone|position|your[_ ]?name)>"
+    r"|_{3,}"
+    r"|\bTODO\b"
+    r"|\bPLACEHOLDER\b"
+    r"|\bYOUR_[A-Z_]+\b"
+    r"|(?:^|\n)(?:Hi|Hello|Dear)\s+,"
+    r"|\bat your team\b"
+    r"|\byour team team\b",
+    re.I | re.S,
+)
+
+_APPLIED_SUBS = [
+    (re.compile(r"\bAs I just applied for\b", re.I), "As I'm applying for"),
+    (re.compile(r"\bI just applied for\b", re.I), "I'm applying for"),
+    (re.compile(r"\bI applied today for\b", re.I), "I'd like to apply for"),
+    (re.compile(r"\bI applied for\b", re.I), "I'd like to apply for"),
+    (re.compile(r"\bI've applied for\b", re.I), "I'd like to apply for"),
+    (re.compile(r"\bI have applied for\b", re.I), "I'd like to apply for"),
+    (re.compile(r"\bI've submitted my application for\b", re.I), "I'd like to apply for"),
+    (re.compile(r"\bI submitted my application for\b", re.I), "I'd like to apply for"),
+    (re.compile(r"\bmy application for (?P<role>.+?) just landed in your system\b", re.I),
+     r"I'd like to apply for \g<role>"),
+    (re.compile(r"\bI'm reaching out because I just applied for\b", re.I),
+     "I'm reaching out because I'd like to apply for"),
+]
+
+
+def rewrite_false_applied(text: str, applied: bool = False) -> str:
+    """Past-tense 'I just applied' -> present intent, unless the lead really was applied/sent."""
+    if applied or not text:
+        return text or ""
+    out = text
+    for pat, repl in _APPLIED_SUBS:
+        out = pat.sub(repl, out)
+    return out
+
+
+def strip_meta_lines(text: str) -> str:
+    out = _META_LINE_RE.sub("\n", text or "")
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
+
+
+def draft_gaps(subject: str, body: str) -> list[str]:
+    """Human-visible blanks left in a draft (empty list = ready for one-tap Send)."""
+    both = f"{subject or ''}\n{body or ''}"
+    return list(dict.fromkeys(m.group(0).strip() for m in _GAP_RE.finditer(both) if m.group(0).strip()))
+
+
+def fill_known_gaps(subject: str, body: str, *, company: str = "", role: str = "",
+                    contact_name: str = "", applicant_name: str = "",
+                    phone: str = "", email: str = "", headline: str = "") -> tuple[str, str]:
+    """Replace obvious placeholders with confirmed facts. Never invent job-town work."""
+    company = (company or "").strip()
+    if company.lower() in ("", "your team"):
+        company = ""
+    role = (role or "").strip() or "this"
+    contact_name = (contact_name or "").strip()
+    applicant_name = (applicant_name or "").strip()
+    phone = (phone or "").strip()
+    email = (email or "").strip()
+    headline = (headline or "").strip()
+    bg = (f"I'm {headline}." if headline and not headline.lower().startswith("i'm")
+          else (headline or "I bring steady field leadership and follow-through."))
+
+    def sub_brackets(s: str) -> str:
+        repl = {
+            "company": company or "your team",
+            "name": contact_name or ("the hiring team"),
+            "your name": applicant_name or "Ryan Long",
+            "role": role,
+            "title": role,
+            "phone": phone or "(770) 875-7227",
+            "email": email or "rlongmbox@gmail.com",
+            "position": role,
+        }
+        def br(m):
+            key = m.group(1).strip().lower()
+            return repl.get(key, m.group(0))
+        s = re.sub(r"\[\[EDIT:[^\]]*\]\]", bg, s, flags=re.I)
+        s = re.sub(r"\[\[.*?\]\]", bg, s, flags=re.S)
+        s = re.sub(r"\[([^\]]{1,40})\]", br, s)
+        s = re.sub(r"\{([a-z_ ]+)\}", lambda m: repl.get(m.group(1).strip().lower(), m.group(0)), s, flags=re.I)
+        s = re.sub(r"<([a-z_ ]+)>", lambda m: repl.get(m.group(1).strip().lower(), m.group(0)), s, flags=re.I)
+        s = re.sub(r"\bYOUR_NAME\b", applicant_name or "Ryan Long", s)
+        s = re.sub(r"\bYOUR_PHONE\b", phone or "(770) 875-7227", s)
+        s = re.sub(r"\bYOUR_EMAIL\b", email or "rlongmbox@gmail.com", s)
+        s = re.sub(r"\bat your team\b", f"at {company}" if company else "", s, flags=re.I)
+        s = re.sub(r"\byour team team\b", f"{company} team" if company else "team", s, flags=re.I)
+        s = re.sub(r" {2,}", " ", s)
+        s = re.sub(r" +([.,;])", r"\1", s)
+        # empty greetings with a missing name slot: "Hi ," / "Dear ,"
+        if contact_name:
+            s = re.sub(r"(?m)^(Hi|Hello|Dear)\s+,\s*$", rf"Hi {contact_name},", s)
+        elif company:
+            s = re.sub(r"(?m)^(Hi|Hello|Dear)\s+,\s*$", rf"Hello {company} team,", s)
+        else:
+            s = re.sub(r"(?m)^(Hi|Hello|Dear)\s+,\s*$", r"Hello,", s)
+        return s
+
+    return sub_brackets(subject or ""), sub_brackets(body or "")
+
+
+def prepare_send_copy(subject: str, body: str, *, applied: bool = False, company: str = "",
+                      role: str = "", contact_name: str = "", applicant_name: str = "",
+                      phone: str = "", email: str = "", headline: str = "") -> tuple[str, str, list[str]]:
+    """Fully prepare a draft for one-tap mailto. Returns (subject, body, remaining_gaps)."""
+    body = strip_meta_lines(body or "")
+    body = rewrite_false_applied(body, applied=applied)
+    subject = rewrite_false_applied(subject or "", applied=applied)
+    subject, body = fill_known_gaps(
+        subject, body, company=company, role=role, contact_name=contact_name,
+        applicant_name=applicant_name, phone=phone, email=email, headline=headline)
+    body = _tidy(body)
+    subject = _tidy(subject)
+    return subject, body, draft_gaps(subject, body)
+
 
 
 def generate_sequence(job: dict, lead: dict, cfg: dict) -> list[dict]:

@@ -60,7 +60,7 @@ h2{font-size:19px;margin:22px 4px 8px}
 .btns{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
 .btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;border-radius:10px;border:1px solid var(--accent);color:var(--accent);background:#fff;text-decoration:none;font-weight:600;font-size:15px;flex:1 1 130px;text-align:center}
 .btn.primary{background:var(--accent);color:#fff}
-.btn.mail{background:var(--ok);border-color:var(--ok);color:#fff;width:100%;flex-basis:100%}
+.btn.mail{background:var(--ok);border-color:var(--ok);color:#fff;width:100%;flex-basis:100%}.btn.needsdetail{background:#fff3cd;color:#7a5b00;border:1px solid #e6c86a;pointer-events:none}
 a{color:var(--accent)}
 .url{display:block;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 dl.ci{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;margin:8px 0 0;font-size:14px}
@@ -202,10 +202,15 @@ body{padding:0 0 72px}
   {% endfor %}
   {% if due_send.t %}
   <div class="btns">
+    {% if due_send.t.needs_detail %}
+    <span class="btn needsdetail">Needs a detail</span>
+    {% elif due_send.t.mailto %}
     <a class="btn mail" href="{{ due_send.t.mailto }}">✉ Send email · touch {{ due_send.t.touch }}</a>
+    {% endif %}
   </div>
   <button type="button" class="btn approve" data-act="approve" data-fid="{{ due_send.t.id }}" data-short="{{ due_send.t.short_id }}" data-company="{{ L.company }}" data-title="{{ L.title }}" data-touch="{{ due_send.t.touch }}">Approve for Grok Bot</button>
-  {% if due_send.t.warn_applied %}<div class="warnbox">Says you applied — only send if you did</div>{% endif %}
+  {% if due_send.t.needs_detail %}<div class="warnbox">Draft still has a blank — fill it before sending</div>
+  {% elif due_send.t.warn_applied %}<div class="warnbox">Says you applied — only send if you did</div>{% endif %}
   {% endif %}
   <details{% if due_send.t %} open{% endif %}>
     <summary>Follow-up drafts ({{ L.touches | length }})</summary>
@@ -217,10 +222,13 @@ body{padding:0 0 72px}
         <summary>Show message</summary>
         <pre>{{ t.body }}</pre>
       </details>
-      {% if t.warn_applied %}<div class="warnbox">Says you applied — only send if you did</div>{% endif %}
-      {% if L.contact_email %}
+      {% if t.needs_detail %}<div class="warnbox">Draft still has a blank — fill it before sending</div>
+      {% elif t.warn_applied %}<div class="warnbox">Says you applied — only send if you did</div>{% endif %}
+      {% if t.needs_detail %}
+      <span class="btn needsdetail">Needs a detail</span>
+      {% elif L.contact_email and t.mailto %}
       <a class="btn mail" href="{{ t.mailto }}">✉ Send{% if t.due and t.pending %} · due{% endif %}</a>
-      {% else %}
+      {% elif not L.contact_email and t.mailto %}
       <a class="btn mail" href="{{ t.mailto }}">✉ Send (no recipient)</a>
       {% endif %}
       {% if L.contact_email and t.pending %}

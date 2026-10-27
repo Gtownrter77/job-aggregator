@@ -24,6 +24,8 @@
 #   {applicant_name} {applicant_first}
 #
 # Drafts containing [[...]] markers cannot be approved until you replace them.
+# Touch 1 must say the applicant is applying / would like to apply — never that they already applied
+# unless the lead is marked applied (generator always uses present-tense intent language).
 
 greetings:
   named: "Hi {name},"
@@ -33,6 +35,7 @@ signoffs: ["Best,", "Thanks so much,", "Warm regards,", "All the best,", "With t
 
 # Never allowed in generated copy (checked for templates and LLM output).
 banned_phrases:
+  - "your team team"
   - "circling back"
   - "circle back"
   - "touching base"
@@ -60,19 +63,19 @@ touches:
       - |
         {greeting}
 
-        I just applied for the {role} role at {company} and wanted to say hello directly. What caught my eye was {detail}. {background}
+        I'm applying for the {role} role at {company} and wanted to say hello directly. What caught my eye was {detail}. {background}
 
         I'd welcome a conversation about where I could help most.
       - |
         {greeting}
 
-        Quick introduction: I'm {applicant_first}, and my application for {role} just landed in your system. I read the posting twice, which is usually a good sign, and {detail} stood out both times. {background}
+        Quick introduction: I'm {applicant_first}, and I'd like to apply for the {role} role. I read the posting twice, which is usually a good sign, and {detail} stood out both times. {background}
 
         Happy to send anything that would make your review easier.
       - |
         {greeting}
 
-        I applied today for the {role} position and wanted to put a name to the application. Plenty of postings blur together, but {detail} made {company} stand out. {background}
+        I'd like to apply for the {role} position and put a name to my interest. Plenty of postings blur together, but {detail} made {company} stand out. {background}
 
         I'd be glad to talk through how I could contribute from day one.
       - |
@@ -80,17 +83,17 @@ touches:
 
         Some job postings read like a parts list; yours read like a team I'd want to join. In particular, {detail} resonated with me. {background}
 
-        I've submitted my application for {role} and would love the chance to learn more.
+        I'm applying for {role} and would love the chance to learn more.
       - |
         {greeting}
 
-        I'm reaching out because I just applied for {role} at {company}, and {detail} is a big part of why I'm excited about it. {background}
+        I'm reaching out because I'd like to apply for {role} at {company}, and {detail} is a big part of why I'm excited about it. {background}
 
         If a short call would be useful, I'm flexible on timing.
       - |
         {greeting}
 
-        Consider this the friendly cover note to my application for {role}. I was drawn to {company} by {detail}. {background}
+        Consider this the friendly cover note as I apply for {role}. I was drawn to {company} by {detail}. {background}
 
         Thanks for taking a look; I'd be glad to share more anytime.
 
