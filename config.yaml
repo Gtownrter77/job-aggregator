@@ -306,10 +306,11 @@ server:
   port: 8765
 
 followups:
-  # 3-touch follow-up DRAFT queue for qualified jobs. Nothing is ever sent
-  # automatically: drafts must be approved in the UI and then sent with an
-  # explicit `python -m aggregator send-approved` (which also requires
-  # sending_enabled: true AND SMTP_* env vars).
+  # 3-touch follow-up queue. When sending_enabled + auto_send + SMTP env are set,
+  # `auto` (and `send-due`) send DUE drafts that already have a confirmed hiring
+  # contact (posting text, enrich-published HR, or manual). No per-message Approve.
+  # Kill switch: sending_enabled: false (default here). Turn on only in config.local.yaml.
+  # Never invents recipients; skips no-email / unconfirmed / placeholder drafts; logs every send.
   # Put your REAL name/phone/email in config.local.yaml (gitignored), not here.
   applicant_name: "Your Name"           # fills {applicant_name}; first line of the signature
   applicant_phone: "555-555-5555"       # signature line 2 (leave "" to omit)
@@ -325,7 +326,8 @@ followups:
   # Prefill a lead's contact email ONLY when an address is written in the posting
   # text itself (e.g. "send resumes to jobs@acme.com"). Never guessed or scraped elsewhere.
   contact_from_posting: true
-  sending_enabled: false                # master switch for send-approved
+  sending_enabled: false                # KILL SWITCH: false = nothing sends (keep false here; enable in config.local.yaml)
+  auto_send: true                       # when sending_enabled, send due drafts with confirmed HR email (no Approve click)
 
 # Facts about YOU, used to personalize follow-up drafts and to score jobs.
 # Override these in config.local.yaml (gitignored). resumes/ is gitignored too:

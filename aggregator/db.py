@@ -70,8 +70,8 @@ CREATE TABLE IF NOT EXISTS leads (
     updated_at      TEXT NOT NULL
 );
 
--- 3-touch follow-up drafts. Nothing here is ever sent unless status='approved'
--- AND someone runs `python -m aggregator send-approved` with SMTP configured.
+-- 3-touch follow-up drafts. Sent only by sender.send_due / auto when
+-- followups.sending_enabled is true, SMTP is set, and the contact is confirmed.
 CREATE TABLE IF NOT EXISTS followups (
     id            TEXT PRIMARY KEY,            -- job_id + ':' + touch
     job_id        TEXT NOT NULL REFERENCES jobs(id),

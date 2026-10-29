@@ -7,7 +7,7 @@ Linux systemd/cron). Pure Python, no bash needed.
     python install/run_auto.py status
 
 * `auto` runs `python -m aggregator auto` (fetch -> rescore -> auto-qualify a few strong
-  new matches as DRAFTS -> digest in logs/latest-digest.md). It never sends, approves or
+  new matches as DRAFTS -> optional auto-send of due drafts with confirmed HR email -> digest). Sends only when sending_enabled; never invents recipients or
   schedules email. A lock file (logs/.run_auto.lock) stops two runs from overlapping.
   `--if-missed` only runs when the most recent weekday slot (7:19, 11:19, 16:19 local time)
   hasn't been covered yet - used for "at logon/boot" triggers so a missed run catches up
@@ -400,7 +400,7 @@ def cmd_status(a) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="run_auto.py", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd")
-    pa = sub.add_parser("auto", help="run `python -m aggregator auto` (drafts only; never sends)")
+    pa = sub.add_parser("auto", help="run `python -m aggregator auto` (drafts + optional auto-send when enabled)")
     pa.add_argument("--if-missed", action="store_true", help="only run if the latest weekday slot was missed")
     pa.add_argument("--ensure-ui", action="store_true", help="also start the UI if it isn't answering")
     pa.add_argument("--no-ensure-ollama", action="store_true", help="don't try to start Ollama")

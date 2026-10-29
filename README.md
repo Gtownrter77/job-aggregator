@@ -13,7 +13,7 @@ It normalizes everything into one SQLite `jobs` table, de-duplicates on
 normalized *company + title + location*, scores each job against your
 resume profile (TF-IDF), and serves a local search UI (FastAPI + htmx).
 It also keeps a **3-touch follow-up email draft queue** for qualified leads. Nothing
-is ever sent automatically (see [Follow-up emails](#follow-up-emails-draft-queue--never-auto-sends)).
+is sent without a confirmed hiring contact and the kill switch on (see [Follow-up emails](#follow-up-emails-auto-send-with-kill-switch)).
 There's also an **Android app** that shows the UI on your phone over home Wi-Fi
 (see [Phone app](#phone-app-android); download the APK from
 [Releases](https://github.com/Gtownrter77/job-aggregator/releases/latest)).
@@ -38,7 +38,7 @@ source: no paid APIs, no tokens. The installer sets up Python, the app, and the 
 (Ollama with the `llama3.2:3b` model). It schedules the job check for weekdays at
 **7:19, 11:19 and 16:19** and also at login (if the computer was off, the missed run
 happens then), keeps the web page running at **http://localhost:8765**, and puts a
-shortcut on your Desktop. It never sends email; follow-ups are drafts you approve yourself.
+shortcut on your Desktop. Follow-ups auto-send only when `sending_enabled` is on (confirmed hiring emails); kill switch defaults off.
 
 **1. Download the app.** Either:
 * click **Code → Download ZIP** on https://github.com/Gtownrter77/job-aggregator and unzip
@@ -155,8 +155,9 @@ python -m aggregator stats                 # DB counts per source/track/region +
 # follow-ups (drafts only; see below)
 python -m aggregator qualify <job_id> [<job_id> ...] [--start YYYY-MM-DD] [--show]
 python -m aggregator followups [--all]     # list the draft queue
-python -m aggregator send-approved --dry-run   # what WOULD be sent (nothing is sent)
-python -m aggregator send-approved         # sends approved+due drafts; refuses unless enabled + SMTP set
+python -m aggregator send-due --dry-run     # what WOULD be sent (nothing is sent)
+python -m aggregator send-due              # send due drafts with confirmed HR email; needs sending_enabled + SMTP
+python -m aggregator send-approved         # alias for send-due
 
 # company info (website, careers/apply link, published HR email + source); never sends anything
 python -m aggregator enrich                # all active leads (time-capped like auto)
@@ -240,8 +241,8 @@ On a public repository the page is **public** (leads, drafts, your phone number)
 Your phone can't run JobSpy or Ollama, so the Android app is a **thin client**: it shows
 this same web UI from the aggregator running on your computer, over your home Wi-Fi.
 Search, company info, Qualify and the follow-up queue all work from the phone. Just like
-the desktop UI, it **never sends email**: approving a draft only marks it, and mail goes out
-only when you run `python -m aggregator send-approved` on the computer.
+the desktop UI, the phone page **never transmits**: mailto only opens your mail app, and Approve for Grok Bot only queues an id. Computer-side mail goes out
+from the computer via `auto` / `send-due` when `followups.sending_enabled` is on (confirmed hiring emails only).
 
 **Download:** on the phone, open
 <https://github.com/Gtownrter77/job-aggregator/releases/latest> and tap
@@ -466,20 +467,32 @@ New columns are added to older DBs automatically on startup.
 To move to Postgres: swap `sqlite3` for `psycopg`, change `?` placeholders to `%s`,
 and optionally make `remote` BOOLEAN / timestamps TIMESTAMPTZ.
 
-## Follow-up emails (draft queue, never auto-sends)
+## Follow-up emails (auto-send with kill switch)
 
-**Safety rule: nothing in this project sends email on its own.** Fetching,
-qualifying, auto-qualifying, editing and approving only write rows to the
-`followups` table. The only code path that can send is
-`python -m aggregator send-approved`, run by hand, and it refuses unless **all** of these are true:
+**Safety rails (never invent recipients):** fetching, qualifying, editing and the
+phone dashboard never transmit email. The only code paths that can send are
+`python -m aggregator send-due` (alias `send-approved`) and the optional send step
+inside `python -m aggregator auto`. Both refuse unless **all** of these are true:
 
-1. `followups.sending_enabled: true` in config.yaml (default **false**);
+1. **Kill switch** `followups.sending_enabled: true` (default **false** in `config.yaml`;
+   turn it on only in `config.local.yaml`). Set it back to `false` to stop all sends immediately.
 2. `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `FROM_ADDR` are set in the environment
-   (copy `.env.example` to `.env`, which is gitignored; nothing is configured by default);
-3. the draft's status is `approved` (a human clicked Approve), its date is due, the
-   lead is still active (not replied), and the lead has a contact email.
+   (copy `.env.example` to `.env`, which is gitignored; nothing is configured by default).
+3. The draft is **due** (`scheduled_for` ≤ today), the lead is still **active**, and the
+   lead has a **confirmed hiring contact**:
+   - `contact_source` = `posting` (address written in the job posting), or
+   - `contact_source` starts with `enrich:` (published HR/careers email with a cited page), or
+   - `contact_source` = `manual` (you typed it in the UI).
+4. With `followups.auto_send: true` (default), due **draft** rows that pass the rails are
+   sent — no per-message Approve click. With `auto_send: false`, only status=`approved` rows send.
+5. Drafts with `[[EDIT …]]` placeholders, empty subject/body, no email, or an unconfirmed
+   contact source are **skipped** (logged, never sent).
 
-`send-approved --dry-run` lists what would go out without connecting to anything.
+Every send (and dry-run preview) is appended to `logs/sends.log`.  
+`send-due --dry-run` lists what would go out without connecting to SMTP.
+
+**Approve for Grok Bot** on the phone dashboard only queues a follow-up id in localStorage
+for you to paste into chat. It never calls SMTP or Gmail.
 
 ### Flow
 
@@ -494,9 +507,10 @@ qualifying, auto-qualifying, editing and approving only write rows to the
    lead is flagged **needs contact**: type a name and email you found yourself. The
    tool never scrapes, guesses or pattern-generates personal emails.
 4. **Follow-ups** page (`/followups`): drafts due today and overdue, each with editable
-   subject/body, **Save**, **Approve** (blocked until there's a contact email and no
-   `[[EDIT …]]` placeholders remain), **Back to draft**, **Skip**, and **Mark replied**
+   subject/body, **Save**, optional **Approve** (legacy mark-reviewed; not required when
+   `auto_send` is on), **Back to draft**, **Skip**, and **Mark replied**
    (stops the remaining touches for that lead). Upcoming drafts and history are listed below.
+   Due drafts with a confirmed hiring email go out on `auto` / `send-due` when the kill switch is on.
 
 ### How the drafts are written
 
@@ -685,5 +699,5 @@ hosted runners than locally; the ATS sources are unaffected.
   ranges need per-job requests); Lever/Ashby use structured fields when present.
 * ATS postings that disappear from a board are pruned on the next successful fetch of
   that board (qualified leads are kept). JobSpy rows are not pruned; filter by "Posted".
-* No email is sent unless you enable it and run `send-approved` yourself; there is no
+* Email only leaves when `sending_enabled` is on and `send-due` / `auto` runs; there is no
   reply detection, so use **Mark replied**.

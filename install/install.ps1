@@ -7,7 +7,7 @@
   (config.local.yaml + optional jobs.db; resumes/ ships with the repo), Ollama + llama3.2:3b (free,
   local, no API keys), two Task Scheduler tasks (UI at logon, kept alive; job check on
   weekdays at 7:19, 11:19, 16:19 and at logon, missed runs catch up), and a Desktop
-  shortcut to http://localhost:8765. It never sends email.
+  shortcut to http://localhost:8765. Auto-send only when followups.sending_enabled is on.
 
   Easiest: double-click install\install.bat
   Or in PowerShell:  powershell -ExecutionPolicy Bypass -File install\install.ps1
@@ -322,7 +322,7 @@ function Get-TaskXml([string]$kind) {
         $limit = "PT0S"
         $restart = "<RestartOnFailure><Interval>PT1M</Interval><Count>255</Count></RestartOnFailure>"
     } else {
-        $desc = "Job Aggregator check: weekdays 7:19, 11:19, 16:19 and at logon; missed runs catch up. Writes follow-up DRAFTS only; never sends email."
+        $desc = "Job Aggregator check: weekdays 7:19, 11:19, 16:19 and at logon; missed runs catch up. Writes follow-up drafts; auto-send only if sending_enabled is on."
         $runArgs = Esc ('-X utf8 "' + $Runner + '" auto --if-missed --ensure-ui --port ' + $Port)
         $t = @("    <LogonTrigger><Enabled>true</Enabled><UserId>$u</UserId><Delay>PT2M</Delay></LogonTrigger>")
         foreach ($hm in @("07:19", "11:19", "16:19")) {

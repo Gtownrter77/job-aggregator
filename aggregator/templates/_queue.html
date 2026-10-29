@@ -27,7 +27,7 @@
     <div class="row" style="margin-top:6px">
       <button hx-post="/followups/{{ f.id }}/save">Save edits</button>
       {% if f.status == 'draft' %}
-        <button class="primary" hx-post="/followups/{{ f.id }}/approve" {% if not f.contact_email %}disabled title="Add a contact email first"{% endif %}>Approve</button>
+        <button class="primary" hx-post="/followups/{{ f.id }}/approve" {% if not f.contact_email %}disabled title="Add a contact email first"{% else %}title="Optional: mark reviewed. With auto_send, due drafts with a confirmed hiring email send without this."{% endif %}>Approve (optional)</button>
       {% else %}
         <button hx-post="/followups/{{ f.id }}/unapprove">Back to draft</button>
       {% endif %}

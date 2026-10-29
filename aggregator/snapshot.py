@@ -11,8 +11,10 @@ top new jobs from both tracks. Every piece of text is HTML-escaped (Jinja autoes
 http(s) URLs become links.
 
 The mailto: Send buttons only OPEN the user's mail app with the draft filled in; nothing is sent
-from here. Approve-for-Grok-Bot only queues follow-up ids in localStorage for Ryan to paste into
-chat — it never emails. The DB is opened read-only in practice (SELECTs only).
+from this HTML file. Computer-side auto-send (sender.py / auto) is separate and only uses confirmed
+hiring contacts when sending_enabled is on. Approve-for-Grok-Bot only queues follow-up ids in
+localStorage for Ryan to paste into chat — it never emails. The DB is opened read-only in practice
+(SELECTs only).
 
 `--publish` (or `dashboard.publish: true` + the `auto` run) force-pushes the page as index.html
 to an orphan `gh-pages` branch built in a temp dir; the main branch is never touched.
@@ -42,7 +44,7 @@ ET = ZoneInfo("America/New_York")
 TEMPLATES = Path(__file__).parent / "templates"
 PAGES_BRANCH = "gh-pages"
 _EMAIL_OK = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-MAILTO_NOTE = "Opens in your email app; nothing sends until you press Send there."
+MAILTO_NOTE = "Opens in your email app; this button never transmits by itself. Computer auto-send uses confirmed hiring emails only (kill switch: followups.sending_enabled)."
 
 CLAIMS_APPLIED = CLAIMS_APPLIED_RE  # past-tense applied claims; rewritten unless lead is applied
 

@@ -1,6 +1,10 @@
 """Unattended run: fetch both tracks -> rescore -> auto-qualify a few strong NEW matches
 (3 follow-up DRAFTS each, written by the local Ollama model, templates as fallback)
--> write a Markdown digest. Never sends, approves or schedules email.
+-> optionally auto-send due drafts with a confirmed hiring contact
+-> write a Markdown digest.
+
+Sending only happens when followups.sending_enabled AND followups.auto_send are true
+and SMTP_* env vars are set. Kill switch: sending_enabled: false. Never invents recipients.
 
 Used by scripts/auto_run.sh (cron, 3x per weekday).
 """
@@ -244,7 +248,30 @@ def run_auto(cfg: dict, fetch: bool = True, qualify: bool = True) -> dict:
             except Exception as e:  # noqa: BLE001
                 log.warning("fit summary: %s", e)
 
-    # 6. follow-up queue state
+    # 6. auto-send due drafts with confirmed hiring contacts (kill switch: sending_enabled)
+    res["send"] = {"sent": 0, "would_send": 0, "skipped": [], "blocked_by": [], "errors": [], "dry_run": True}
+    if (cfg.get("followups") or {}).get("auto_send") and (cfg.get("followups") or {}).get("sending_enabled"):
+        try:
+            from . import sender
+
+            res["send"] = sender.send_due(conn, cfg, dry_run=False)
+            log.info("auto-send: sent=%s would=%s blocked=%s errors=%s",
+                     res["send"].get("sent"), res["send"].get("would_send"),
+                     res["send"].get("blocked_by"), len(res["send"].get("errors") or []))
+        except Exception as e:  # noqa: BLE001
+            log.exception("auto-send failed")
+            res["errors"].append(f"send: {type(e).__name__}: {e}")
+            res["send"] = {"sent": 0, "would_send": 0, "skipped": [], "blocked_by": [str(e)], "errors": [str(e)], "dry_run": True}
+    elif (cfg.get("followups") or {}).get("auto_send"):
+        # Report what WOULD go out, without connecting (kill switch off or SMTP missing)
+        try:
+            from . import sender
+
+            res["send"] = sender.send_due(conn, cfg, dry_run=True)
+        except Exception as e:  # noqa: BLE001
+            log.warning("auto-send dry preview failed: %s", e)
+
+    # 7. follow-up queue state
     q = followups.queue(conn)
     res["due"] = q["due"]
     res["blocked"] = [dict(r) for r in conn.execute(
@@ -278,8 +305,22 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
         approve_url = pages
     else:
         approve_url = "http://localhost:8765/followups"
-    L.append(f"Run took {r['seconds']:.0f} s. Local AI: {r['ollama']}. "
-             f"Nothing was sent: drafts wait for your approval at {approve_url}")
+    send = r.get("send") or {}
+    fu = cfg.get("followups") or {}
+    kill = "on" if fu.get("sending_enabled") else "OFF"
+    if send.get("sent"):
+        send_note = (f"Auto-sent {send['sent']} due follow-up(s) with confirmed hiring contacts. "
+                     f"Log: logs/sends.log. Kill switch: followups.sending_enabled ({kill}).")
+    elif send.get("blocked_by"):
+        send_note = (f"Auto-send armed but blocked ({'; '.join(send['blocked_by'])}). "
+                     f"{send.get('would_send', 0)} due draft(s) ready. Review queue: {approve_url}")
+    elif send.get("would_send"):
+        send_note = (f"Auto-send dry: {send['would_send']} due draft(s) would go out "
+                     f"(sending_enabled or SMTP not fully on). Queue: {approve_url}")
+    else:
+        send_note = (f"No due follow-ups auto-sent this run. Queue: {approve_url}. "
+                     f"Kill switch: followups.sending_enabled ({kill}).")
+    L.append(f"Run took {r['seconds']:.0f} s. Local AI: {r['ollama']}. {send_note}")
     en = r.get("enrich") or {}
     if en and not en.get("skipped"):
         L.append(f"Company info: {en.get('jobs', 0)} jobs enriched in {en.get('seconds', 0):.0f} s "
@@ -320,7 +361,7 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
                  f"{', '.join(gens)} ({j['draft_seconds']} s)")
         L += _ci(j, "  ")
         for d in j["drafts"]:
-            L.append(f"  - touch {d['touch']} ({d['scheduled_for']}, {d['status']} = needs approval): {d['subject']}")
+            L.append(f"  - touch {d['touch']} ({d['scheduled_for']}, {d['status']}): {d['subject']}")
         if j.get("fit_summary"):
             L.append(f"  - _{j['fit_summary']}_")
         if j["drafts"]:
@@ -342,6 +383,20 @@ def write_digest(cfg: dict, r: dict, started: datetime) -> str:
     if not r["due"]:
         L.append("_Nothing due._")
     L.append(f"\n{r['upcoming_count']} more drafts scheduled later.")
+    send = r.get("send") or {}
+    L += ["", f"## Auto-send ({send.get('sent', 0)} sent, {send.get('would_send', 0)} eligible)", ""]
+    if send.get("blocked_by"):
+        L.append("Blocked by: " + "; ".join(send["blocked_by"]))
+    for it in send.get("items") or []:
+        flag = "SENT" if send.get("sent") and not send.get("dry_run") else "would send"
+        L.append(f"- [{flag}] {it.get('scheduled_for')} touch {it.get('touch')} {it.get('company')} -> {it.get('contact_email')}: {it.get('subject')}")
+    for it in send.get("skipped") or []:
+        L.append(f"- [skipped:{it.get('skip_reason')}] {it.get('company')} touch {it.get('touch')} -> {it.get('contact_email') or 'NO EMAIL'}")
+    for e in send.get("errors") or []:
+        L.append(f"- ERROR {e}")
+    if not (send.get("items") or send.get("skipped") or send.get("blocked_by") or send.get("errors")):
+        L.append("_Nothing eligible this run._")
+    L.append("Kill switch: set `followups.sending_enabled: false` in config.local.yaml to stop all sends.")
     L += ["", f"## Blocked: no contact email yet ({len(r['blocked'])})", ""]
     for b in r["blocked"]:
         ci = b.get("company_info") or {}
@@ -397,6 +452,7 @@ def main_cli(args, cfg) -> int:
     if r.get("skipped"):
         print("skipped: another run holds the lock")
         return 0
-    print(f"digest: {r['digest']}  (new {r['new_total']}, qualified {len(r['qualified'])}, errors {len(r['errors'])})")
+    send = r.get("send") or {}
+    print(f"digest: {r['digest']}  (new {r['new_total']}, qualified {len(r['qualified'])}, sent {send.get('sent', 0)}, errors {len(r['errors'])})")
     publish_dashboard(cfg)
     return 0

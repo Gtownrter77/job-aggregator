@@ -1,7 +1,7 @@
 """Qualified leads + 3-touch follow-up DRAFT queue.
 
 Safety model: this module only creates/edits rows. It never sends email.
-Sending lives in sender.py and only touches rows with status='approved'.
+Sending lives in sender.py (send-due / auto when sending_enabled + auto_send).
 """
 from __future__ import annotations
 
@@ -147,7 +147,7 @@ def edit(conn, fid, subject, body):
 
 
 def approve(conn, fid):
-    """Approve = allowed to be sent by an explicit send-approved run. Requires a contact email."""
+    """Approve = mark reviewed (legacy). With auto_send, due drafts with a confirmed contact send without this."""
     row = conn.execute("SELECT l.contact_email, f.subject, f.body FROM followups f JOIN leads l ON l.job_id=f.job_id WHERE f.id=?", (fid,)).fetchone()
     if not row or not row["contact_email"]:
         raise ValueError("needs contact: add a recruiter/hiring email before approving")

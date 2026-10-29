@@ -88,7 +88,8 @@ DEFAULTS: dict[str, Any] = {
         "templates_file": "followup_templates.yaml",
         "auto_qualify_score": None,
         "contact_from_posting": True,
-        "sending_enabled": False,
+        "sending_enabled": False,  # kill switch: must be true (usually in config.local.yaml) to send
+        "auto_send": True,         # when sending_enabled, auto/send-due send due drafts with confirmed HR email
         "use_llm": True,
     },
     "applicant": {"headline": "", "skills": [], "accomplishments": [], "profile_file": "",

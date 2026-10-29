@@ -39,7 +39,7 @@ on `logs/.boot.lock`). Log: `logs/boot.log` (each line is tagged with its trigge
 5. **catch-up**: on weekdays, if the latest 07:19/11:19/16:19 slot (+3 min grace) has passed
    today and the last `auto_run end (rc=0)` in `logs/auto_run.log` is older than it, runs
    `scripts/auto_run.sh` once for that slot (marker `logs/.catchup-YYYYMMDD-HHMM`; skipped while
-   `logs/.auto_run.lock` is held). Never sends email.
+   `logs/.auto_run.lock` is held). Sends due drafts with a confirmed hiring email only when followups.sending_enabled is true (kill switch; default off).
 
 Edit the schedule in `scripts/autostart/crontab.block` (boot.sh syncs it into the crontab;
 direct `crontab -e` edits inside the managed block are reverted).

@@ -236,7 +236,7 @@ def phone_page(request: Request):
 
 # ---------------------------------------------------------------- follow-ups
 # These endpoints only create/edit/approve DRAFTS. Nothing here sends email;
-# sending is CLI-only: `python -m aggregator send-approved`.
+# sending is CLI/auto only: `python -m aggregator send-due` or `auto` when enabled.
 
 QUALIFY_BTN = ('<button class="qbtn {cls}" hx-post="/jobs/{id}/{action}" hx-swap="outerHTML" '
                'title="{tip}">{label}</button>')
@@ -355,7 +355,7 @@ def followup_action(request: Request, fid: str, action: str, subject: str = Form
             if subject or body:
                 fu.edit(conn, fid, subject, body)
             fu.approve(conn, fid)
-            msg = "Approved. It will go out only when you run: python -m aggregator send-approved"
+            msg = "Marked approved. With auto_send on, due drafts with a confirmed hiring email go out on the next auto/send-due run (kill switch: followups.sending_enabled)."
         elif action == "unapprove":
             fu.unapprove(conn, fid)
             msg = "Moved back to draft."

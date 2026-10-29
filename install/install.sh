@@ -21,7 +21,7 @@
 # resumes/profile.*, optional data/jobs.db), Ollama + llama3.2:3b (free, local, no API keys),
 # runs `auto` on weekdays at 7:19, 11:19, 16:19 local time and at login (missed runs catch
 # up), keeps the UI at http://localhost:8765 running, and puts a shortcut on the Desktop.
-# It never sends email.
+# Auto-send only when followups.sending_enabled is on.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -420,7 +420,7 @@ WantedBy=default.target
 EOF
   cat >"$dir/$UNIT_AUTO.service" <<EOF
 [Unit]
-Description=Job Aggregator unattended run (fetch + follow-up DRAFTS; never sends email)
+Description=Job Aggregator unattended run (fetch + follow-up drafts; auto-send only if sending_enabled)
 After=network-online.target
 
 [Service]

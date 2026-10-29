@@ -5,6 +5,9 @@ followups:
   applicant_name: "Your Name"
   applicant_phone: "555-555-5555"
   applicant_email: "you@example.com"
+  # Kill switch + auto-send (due drafts with a confirmed hiring email go out on `auto`):
+  # sending_enabled: true
+  # auto_send: true
 
 applicant:
   headline: "a project coordinator with 10 years in operations and customer service"

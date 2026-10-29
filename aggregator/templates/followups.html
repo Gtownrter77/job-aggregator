@@ -45,9 +45,14 @@
   <nav><a href="/" class="nav">Jobs</a> <a href="/followups" class="nav on">Follow-ups</a> {% if is_local(request) %}<a href="/phone" class="nav">Phone app</a>{% endif %}</nav>
 </header>
 <main>
-  <div class="safety"><b>Nothing is sent from this page.</b> Approving only marks a draft as allowed to send.
-    Emails go out only when you explicitly run <code>python -m aggregator send-approved</code>, with
-    <code>followups.sending_enabled: true</code> and SMTP env vars set.</div>
+  <div class="safety"><b>Nothing is sent from this page.</b>
+    With <code>followups.auto_send: true</code> and the kill switch
+    <code>followups.sending_enabled: true</code> (plus SMTP env), due drafts that already have a
+    <b>confirmed hiring email</b> (from the posting, a published HR page, or one you typed) go out on
+    <code>auto</code> / <code>send-due</code> — no per-message Approve needed.
+    Skips no-email and unconfirmed contacts; every send is logged to <code>logs/sends.log</code>.
+    Turn sends off anytime: set <code>sending_enabled: false</code> in <code>config.local.yaml</code>.
+    Approve still marks a draft reviewed; it is optional when auto_send is on.</div>
   <div id="queue">{% include "_queue.html" %}</div>
 </main>
 </body>

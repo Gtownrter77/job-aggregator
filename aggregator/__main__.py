@@ -1,4 +1,4 @@
-"""CLI: python -m aggregator {fetch,serve,token,verify-slugs,rescore,stats,qualify,followups,send-approved,auto,enrich,snapshot,prune-stale,repair-drafts}"""
+"""CLI: python -m aggregator {fetch,serve,token,verify-slugs,rescore,stats,qualify,followups,send-due,send-approved,auto,enrich,snapshot,prune-stale,repair-drafts}"""
 from __future__ import annotations
 
 import argparse
@@ -172,14 +172,20 @@ def cmd_followups(args, cfg):
 def cmd_send(args, cfg):
     from . import db, sender
 
-    res = sender.send_approved(db.connect(cfg), cfg, dry_run=args.dry_run)
+    res = sender.send_due(db.connect(cfg), cfg, dry_run=args.dry_run)
     if res["blocked_by"]:
         print("NOT SENDING. Blocked by:")
         for p in res["blocked_by"]:
             print("  -", p)
-    print(f"{len(res['items'])} approved follow-up(s) due; sent {res['sent']}{' (dry run)' if res.get('dry_run') else ''}")
+    mode = "due (auto_send)" if (cfg.get("followups") or {}).get("auto_send") else "approved-only"
+    print(f"{len(res['items'])} {mode} follow-up(s) eligible; sent {res['sent']}"
+          f"{' (dry run)' if res.get('dry_run') else ''}")
     for it in res["items"]:
-        print(f"  {it['scheduled_for']} touch {it['touch']} -> {it['contact_email']}: {it['subject']}")
+        print(f"  {it['scheduled_for']} touch {it['touch']} [{it.get('status')}] "
+              f"-> {it['contact_email']} ({it.get('contact_source')}): {it['subject']}")
+    for it in res.get("skipped") or []:
+        print(f"  SKIP [{it.get('skip_reason')}] {it.get('company')} touch {it.get('touch')} "
+              f"-> {it.get('contact_email') or 'NO EMAIL'}")
     for e in res.get("errors") or []:
         print("  ERROR", e)
     return 2 if res["blocked_by"] and not args.dry_run else 0
@@ -323,15 +329,18 @@ def main(argv=None):
     fp.add_argument("--all", action="store_true", help="include sent/skipped/replied")
     fp.set_defaults(func=cmd_followups)
 
-    sp = sub.add_parser("send-approved", help="send APPROVED, due follow-ups via SMTP (explicit, opt-in)")
+    sp = sub.add_parser("send-due", help="send due follow-ups via SMTP (auto_send: drafts+approved with confirmed HR email; else approved-only)")
     sp.add_argument("--dry-run", action="store_true", help="list what would be sent; send nothing")
     sp.set_defaults(func=cmd_send)
+    sp2 = sub.add_parser("send-approved", help="alias for send-due (legacy name)")
+    sp2.add_argument("--dry-run", action="store_true", help="list what would be sent; send nothing")
+    sp2.set_defaults(func=cmd_send)
 
     rp = sub.add_parser("redraft", help="rewrite unedited drafts of qualified job(s) (e.g. with Ollama); never sends")
     rp.add_argument("job_ids", nargs="+")
     rp.set_defaults(func=cmd_redraft)
 
-    ap = sub.add_parser("auto", help="unattended run: fetch, rescore, auto-qualify strong new matches (drafts only), write digest")
+    ap = sub.add_parser("auto", help="unattended run: fetch, rescore, auto-qualify, optional auto-send due drafts, write digest")
     ap.add_argument("--no-fetch", action="store_true", help="skip fetching (use what's in the DB)")
     ap.add_argument("--no-qualify", action="store_true", help="don't qualify anything (digest only)")
     ap.set_defaults(func=cmd_auto)

@@ -2,7 +2,9 @@
 # Unattended job check: ensure Ollama + UI are up, then run
 #   python -m aggregator auto
 # (fetch both tracks, rescore, auto-qualify up to 5 strong NEW matches with
-# Ollama-written follow-up DRAFTS, write logs/digest-*.md). Never sends email.
+# Ollama-written follow-up DRAFTS, optionally auto-send due drafts with a
+# confirmed hiring email when followups.sending_enabled+auto_send+SMTP are set,
+# write logs/digest-*.md). Kill switch: followups.sending_enabled: false.
 # With dashboard.publish: true (config.local.yaml) `auto` also refreshes the phone
 # dashboard on GitHub Pages (gh-pages branch only; fails soft).
 #

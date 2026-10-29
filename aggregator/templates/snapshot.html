@@ -165,7 +165,7 @@ body{padding:0 0 72px}
 <nav><a href="#leads">Leads ({{ d.counts.leads }})</a><a href="#new">New jobs ({{ d.counts.new_listed }})</a></nav>
 
 <h2 id="leads">Active leads <span class="sec-n" data-for="leads-list"></span></h2>
-<p class="note">Follow-up drafts are inside each lead. Tap <b>Send</b> to open your mail app with the draft filled in — nothing sends until you press Send there. <b>Approve for Grok Bot</b> only queues an id on this phone for you to paste into chat.</p>
+<p class="note">Follow-up drafts are inside each lead. Tap <b>Send</b> to open your mail app with the draft filled in — that button never transmits by itself. On the computer, due drafts with a <b>confirmed hiring email</b> auto-send when enabled (kill switch: <code>followups.sending_enabled</code>). <b>Approve for Grok Bot</b> only queues an id on this phone for you to paste into chat — it never sends email.</p>
 <div id="leads-list">
 {% for L in d.leads %}
 <section class="card{% if L.due_count %} due{% endif %}" id="lead-{{ L.id[:12] }}"{{ fattrs(L) }}>

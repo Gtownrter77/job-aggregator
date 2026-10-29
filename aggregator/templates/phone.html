@@ -62,8 +62,9 @@
       <li>Firewall allows TCP port {{ port }} on private/home networks (Windows: click "Allow" on the prompt, or see the README).</li>
     </ul>
   </div>
-  <p class="muted">Nothing is ever sent from the app either: approving a draft only marks it; emails go out only via
-  <code>python -m aggregator send-approved</code> on this computer.</p>
+  <p class="muted">Nothing is sent from the app. Due follow-ups with a confirmed hiring email go out from the
+  computer via <code>auto</code> / <code>send-due</code> when <code>sending_enabled</code> is on.
+  Kill switch: <code>followups.sending_enabled: false</code>. Approve for Grok Bot only queues an id to paste into chat.</p>
 {% endif %}
 </main>
 </body>
