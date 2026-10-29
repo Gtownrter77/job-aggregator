@@ -34,7 +34,7 @@ log = logging.getLogger("aggregator.sender")
 REQUIRED_ENV = ("SMTP_HOST", "SMTP_USER", "SMTP_PASS", "FROM_ADDR")
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _BAD_EMAIL = re.compile(
-    r"(no-?reply|donotreply|example\.(com|org)|privacy|accommodation|ada@|eeo|\.(png|jpg|gif)$)",
+    r"(no-?reply|donotreply|example\.(com|org)|privacy|accommodation|ada@|eeo|fraud|scam|abuse|security|legal|compliance|ethics|unsubscribe|\.(png|jpg|gif)$)",
     re.I,
 )
 # contact_source values that mean a human/published hiring inbox (never invented)
