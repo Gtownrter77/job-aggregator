@@ -341,3 +341,5 @@ applicant:
   skills: ["project management", "scheduling", "customer service", "sales", "Excel"]
   # optional extra, true accomplishments (past tense, completes "I ..."); merged with the profile file
   accomplishments: []
+  # substrings matching profile.json items with confirm:true that are OK to use in drafts
+  confirm_allow: []

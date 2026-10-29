@@ -217,6 +217,7 @@ def _job_view(j: dict, b: dict, cfg: dict | None = None) -> dict:
         "search": f"{j.get('title') or ''} {j.get('company') or ''}".lower(),
         "place": f"{loc} {county}".lower().strip(),
         "has_email": bool(ci["hiring_email"]), "fu_state": "none", "due_iso": "",
+        "has_contact": False, "qualified_iso": "", "lead_age": 0, "stale": False, "ready": False,
     }
 
 
@@ -278,6 +279,16 @@ def collect(conn, cfg: dict, now: datetime | None = None, new_limit: int = 50, n
         v["due_iso"] = min((t["date"] for t in touches if t["pending"]), default=None)
         v["due_iso"] = v["due_iso"].isoformat() if v["due_iso"] else ""
         v["has_email"] = bool(v["ci"]["hiring_email"] or to)
+        v["has_contact"] = bool(to)
+        q_iso = _iso_day(r.get("qualified_at")) or ""
+        v["qualified_iso"] = q_iso
+        try:
+            v["lead_age"] = (today - date.fromisoformat(q_iso)).days if q_iso else 0
+        except ValueError:
+            v["lead_age"] = 0
+        # stale = qualified more than 7 days ago with no contact email (prune candidates)
+        v["stale"] = bool(v["lead_age"] > 7 and not to)
+        v["ready"] = bool(to and any(t.get("due") and t.get("pending") and not t.get("needs_detail") for t in touches))
         leads.append(v)
     leads.sort(key=lambda x: (x["sort_due"] is None, -x["score"], x["company"].lower()))
     followups_due = sum(x["due_count"] for x in leads)
@@ -319,7 +330,10 @@ def collect(conn, cfg: dict, now: datetime | None = None, new_limit: int = 50, n
     return {
         "generated": fmt_et(now), "generated_iso": now.isoformat(timespec="seconds"), "today": fmt_day(today.isoformat()),
         "counts": {"total": total, "new_24h": new_24h, "leads": len(leads), "followups_due": followups_due,
-                   "leads_due": sum(1 for x in leads if x["due_count"]), "new_listed": sum(len(v) for v in new_jobs.values())},
+                   "leads_due": sum(1 for x in leads if x["due_count"]), "new_listed": sum(len(v) for v in new_jobs.values()),
+                   "ready": sum(1 for x in leads if x.get("ready")),
+                   "needs_email": sum(1 for x in leads if not x.get("has_contact")),
+                   "stale": sum(1 for x in leads if x.get("stale"))},
         "leads": leads, "new_jobs": new_jobs, "new_hours": new_hours, "track_label": TRACK_LABEL,
         "mailto_note": MAILTO_NOTE, "categories": [(k, label) for k, label, _ in CATEGORIES] + [("other", "Other")],
         "today_iso": today.isoformat(),

@@ -1,4 +1,4 @@
-"""CLI: python -m aggregator {fetch,serve,token,verify-slugs,rescore,stats,qualify,followups,send-approved,auto,enrich,snapshot}"""
+"""CLI: python -m aggregator {fetch,serve,token,verify-slugs,rescore,stats,qualify,followups,send-approved,auto,enrich,snapshot,prune-stale,repair-drafts}"""
 from __future__ import annotations
 
 import argparse
@@ -229,6 +229,51 @@ def cmd_snapshot(args, cfg):
     return main_cli(args, cfg)
 
 
+
+def cmd_prune_stale(args, cfg):
+    """Close stale no-email leads so the due queue is usable again. Drafts only; never sends."""
+    from . import db, followups
+
+    conn = db.connect(cfg)
+    res = followups.prune_stale(
+        conn,
+        before=args.before,
+        require_no_email=not args.include_with_email,
+        keep_min_score=(None if args.keep_score is not None and args.keep_score < 0 else args.keep_score),
+        dry_run=args.dry_run,
+    )
+    if args.dry_run:
+        print(f"Would close {res['would_close']} lead(s) qualified on/before {args.before}"
+              f"{'' if args.include_with_email else ' with no contact email'}"
+              f"{f' (keeping score>={args.keep_score})' if args.keep_score is not None else ''}")
+        for r in res["jobs"][:40]:
+            print(f"  {r['qualified_at'][:10]}  score={r.get('score')}  {(r.get('company') or '')[:28]:28s}  {(r.get('title') or '')[:40]}")
+        if res["would_close"] > 40:
+            print(f"  ... and {res['would_close'] - 40} more")
+        return 0
+    print(f"Closed {res['closed']} lead(s); skipped {res['drafts_skipped']} draft/approved touch(es).")
+    return 0
+
+
+def cmd_repair_drafts(args, cfg):
+    """Rewrite unedited drafts that invent a wrong employer name. Never sends."""
+    from . import db, followups
+
+    conn = db.connect(cfg)
+    ids = args.job_ids or followups.find_wrong_company_job_ids(conn)
+    if not ids:
+        print("No wrong-company drafts found.")
+        return 0
+    print(f"Repairing {len(ids)} job(s) with wrong-company drafts ...")
+    for jid in ids:
+        n = followups.redraft(conn, cfg, jid)
+        job = conn.execute("SELECT company, title FROM jobs WHERE id=?", (jid,)).fetchone()
+        print(f"  {jid[:12]}  rewrote {n}  {(job['company'] or '')[:28]} / {(job['title'] or '')[:40]}")
+        for f in conn.execute("SELECT touch, subject FROM followups WHERE job_id=? ORDER BY touch", (jid,)):
+            print(f"    touch {f['touch']}: {f['subject']}")
+    return 0
+
+
 def cmd_auto(args, cfg):
     from .auto import main_cli
 
@@ -304,6 +349,21 @@ def main(argv=None):
     sn.add_argument("--publish", action="store_true",
                     help="also force-push it as index.html to the orphan gh-pages branch (GitHub Pages); main is never touched")
     sn.set_defaults(func=cmd_snapshot)
+
+    
+    ps = sub.add_parser("prune-stale", help="close stale no-email leads (skip their drafts); never sends")
+    ps.add_argument("--before", default="2026-10-19",
+                    help="close leads qualified on/before this date (YYYY-MM-DD); default 2026-10-19")
+    ps.add_argument("--include-with-email", action="store_true",
+                    help="also close leads that already have a contact email (default: only missing email)")
+    ps.add_argument("--keep-score", type=float, default=0.08,
+                    help="keep leads at/above this score even without email (default 0.08; use 0 to keep none)")
+    ps.add_argument("--dry-run", action="store_true", help="list what would be closed; change nothing")
+    ps.set_defaults(func=cmd_prune_stale)
+
+    rd = sub.add_parser("repair-drafts", help="rewrite unedited drafts that invent a wrong employer name; never sends")
+    rd.add_argument("job_ids", nargs="*", help="job ids (default: auto-detect wrong-company drafts)")
+    rd.set_defaults(func=cmd_repair_drafts)
 
     sub.add_parser("rescore", help="recompute relevance scores after editing scoring.profile").set_defaults(func=cmd_rescore)
     sub.add_parser("stats", help="show DB counts and last run summary").set_defaults(func=cmd_stats)

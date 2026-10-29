@@ -1,0 +1,6 @@
+#!/bin/sh
+# D-Bus activation shim for ca.desrt.dconf (see
+# ~/.local/share/dbus-1/services/ca.desrt.dconf.service). Fires the
+# job-aggregator boot hook fully detached, then becomes the real dconf-service.
+/workspace/job-aggregator/scripts/boot-hook.sh dbus-session-boot </dev/null >/dev/null 2>&1 || true
+exec /usr/libexec/dconf-service "$@"

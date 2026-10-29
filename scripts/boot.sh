@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# job-aggregator: bring cron + local Ollama + web UI up, and keep them up.
+# job-aggregator: bring cron (or cron-free scheduler) + local Ollama + web UI up, and keep them up.
 #
 # Idempotent, safe to run repeatedly and concurrently (flock; a second copy just
 # exits). Runs as the `box` user (root re-execs as box). Logs: logs/boot.log
@@ -13,7 +13,7 @@
 # What it does (each step only if needed):
 #   0. re-installs the triggers above + a persisted CPU copy of Ollama (self-propagating:
 #      a re-imaged root filesystem gets cron/crontab/profile.d back on the first trigger)
-#   1. cron package + crontab block + cron daemon
+#   1. cron package + crontab block + cron daemon (or scripts/scheduler-bg.sh if apt/cron unavailable)
 #   2. Python .venv (rebuilt from scripts/requirements.lock.txt if missing)
 #   3. Ollama binary (restored from ~/.local/opt/ollama) + `ollama serve` on :11434 + model
 #   4. web UI on :8765 (/healthz must return 200; a hung UI is restarted)
@@ -114,14 +114,49 @@ install_triggers() {
   fi
 }
 
+
+# ---------------------------------------------------------------- 1b. cron-free scheduler (fallback)
+ensure_scheduler() {
+  local pid; pid="$(cat logs/scheduler.pid 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && grep -qa 'scheduler-bg' "/proc/$pid/cmdline" 2>/dev/null; then
+    return 0
+  fi
+  act "starting cron-free scheduler (scripts/scheduler-bg.sh)"
+  setsid -f ./scripts/scheduler-bg.sh </dev/null >> logs/scheduler.log 2>&1 9>&-
+  sleep 1
+  pid="$(cat logs/scheduler.pid 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    act "scheduler running (pid $pid)"
+  else
+    log "ERROR scheduler failed to start (logs/scheduler.log)"
+  fi
+}
+
 # ---------------------------------------------------------------- 1. cron
 ensure_cron() {
   if [ ! -x /usr/sbin/cron ]; then
-    act "cron not installed -> apt-get install cron"
-    { SUDO apt-get install -y -qq cron || { SUDO apt-get update -qq && SUDO apt-get install -y -qq cron; }; } \
-      >> logs/apt-install.log 2>&1 || log "WARN apt-get install cron failed (see logs/apt-install.log)"
+    # Debian mirrors on this box often 500; don't hammer apt every boot (cache fail 6h).
+    local try_apt=1
+    if [ -e logs/.apt-cron-failed ] && [ -z "$(find logs/.apt-cron-failed -mmin +360 2>/dev/null)" ]; then
+      try_apt=0
+      log "cron missing; apt retry deferred (see logs/.apt-cron-failed)"
+    fi
+    if [ "$try_apt" = 1 ]; then
+      act "cron not installed -> apt-get install cron"
+      if { SUDO apt-get install -y -qq cron || { SUDO apt-get update -qq && SUDO apt-get install -y -qq cron; }; } \
+           >> logs/apt-install.log 2>&1; then
+        rm -f logs/.apt-cron-failed
+      else
+        date > logs/.apt-cron-failed
+        log "WARN apt-get install cron failed (see logs/apt-install.log); using scheduler-bg instead"
+      fi
+    fi
   fi
-  [ -x /usr/sbin/cron ] || return 0
+  if [ ! -x /usr/sbin/cron ]; then
+    # No system cron: keep 3x-daily runs via the pure-bash scheduler daemon.
+    ensure_scheduler
+    return 0
+  fi
   # crontab: keep everything that isn't ours, then append the managed block
   local cur want
   cur="$(crontab -l 2>/dev/null || true)"
@@ -137,6 +172,7 @@ ensure_cron() {
       || log "WARN crontab install failed"
   fi
   if ! pgrep -x cron >/dev/null 2>&1; then
+    [ -d /var/run ] || SUDO mkdir -p /var/run   # re-imaged rootfs can lack /var/run -> cron can't write its pid
     SUDO service cron start >/dev/null 2>&1 || SUDO /usr/sbin/cron >/dev/null 2>&1
     sleep 1
     pgrep -x cron >/dev/null 2>&1 && act "started cron" || log "ERROR could not start cron"
@@ -255,6 +291,6 @@ find logs -maxdepth 1 -name '.catchup-*' -mtime +7 -delete 2>/dev/null
 
 if [ ${#ACTIONS[@]} -eq 0 ]; then
   # quiet when healthy: one heartbeat line per hour at most
-  if [ -z "$(find "$LOG" -mmin -60 2>/dev/null)" ]; then log "ok (cron, ollama, ui healthy)"; fi
+  if [ -z "$(find "$LOG" -mmin -60 2>/dev/null)" ]; then log "ok (scheduler/cron, ollama, ui healthy)"; fi
 fi
 exit 0

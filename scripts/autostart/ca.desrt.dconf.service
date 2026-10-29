@@ -1,0 +1,9 @@
+# User-level D-Bus activation override (installed by
+# /workspace/job-aggregator/scripts/boot.sh). Identical to
+# /usr/share/dbus-1/services/ca.desrt.dconf.service except Exec goes through a
+# tiny shim that first fires the job-aggregator boot hook (detached) and then
+# execs the real /usr/libexec/dconf-service. The box's start-desktop.sh writes
+# dconf keys on every boot, so this fires automatically at boot with no shell.
+[D-BUS Service]
+Name=ca.desrt.dconf
+Exec=/home/box/.local/libexec/jobagg-dconf-service

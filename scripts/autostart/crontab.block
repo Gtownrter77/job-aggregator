@@ -1,0 +1,10 @@
+# >>> job-aggregator (managed by scripts/boot.sh from scripts/autostart/crontab.block) >>>
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+MAILTO=""
+# weekday fetch + auto-qualify + Ollama drafts (America/New_York; box clock is ET)
+19 7,11,16 * * 1-5  /workspace/job-aggregator/scripts/auto_run.sh
+# boot + self-heal watchdog: revive cron/Ollama/UI, catch up a missed slot
+@reboot             /workspace/job-aggregator/scripts/boot.sh --from=cron-reboot
+*/10 * * * *        /workspace/job-aggregator/scripts/boot.sh --from=watchdog
+# <<< job-aggregator <<<

@@ -128,6 +128,14 @@ class Snapshot(unittest.TestCase):
         self.assertIn('data-place="atlanta, ga fulton county"', page)
         self.assertIn('data-po="2026-10-07"', page)
         self.assertIn('data-em="1"', page)               # lead a has a contact email
+        self.assertIn('data-ce="1"', page)
+        self.assertIn('data-stale="', page)
+        self.assertIn('data-ready="', page)
+        self.assertIn('data-preset="stale"', page)
+        self.assertIn('data-preset="needs"', page)
+        self.assertIn("ready to send (have email)", page)
+        self.assertIn("stale (&gt;7d, no email)", page)
+        self.assertEqual(data["counts"]["needs_email"], 1)  # lead b has no email
         self.assertIn('<body data-today="2026-10-08">', page)
 
     def test_publish_refuses_main(self):

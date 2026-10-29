@@ -1,6 +1,6 @@
 {# Self-contained phone snapshot (aggregator/snapshot.py). No external assets. Autoescaped.
    One inline script adds client-side filters/sort (state in localStorage); without JS every job is listed. #}
-{% macro fattrs(J) %} data-id="{{ J.id }}" data-q="{{ J.search }}" data-place="{{ J.place }}" data-tr="{{ J.track_keys | join(' ') }}" data-cat="{{ J.cats | join(' ') }}" data-em="{{ 1 if J.has_email else 0 }}" data-fu="{{ J.fu_state }}" data-sc="{{ '%.5f' | format(J.score) }}" data-po="{{ J.posted_iso }}" data-due="{{ J.due_iso }}"{% endmacro %}
+{% macro fattrs(J) %} data-id="{{ J.id }}" data-q="{{ J.search }}" data-place="{{ J.place }}" data-tr="{{ J.track_keys | join(' ') }}" data-cat="{{ J.cats | join(' ') }}" data-em="{{ 1 if J.has_email else 0 }}" data-fu="{{ J.fu_state }}" data-sc="{{ '%.5f' | format(J.score) }}" data-po="{{ J.posted_iso }}" data-due="{{ J.due_iso }}" data-ce="{{ 1 if J.has_contact else 0 }}" data-age="{{ J.lead_age }}" data-stale="{{ 1 if J.stale else 0 }}" data-ready="{{ 1 if J.ready else 0 }}"{% endmacro %}
 {% macro nope() %}<button type="button" class="btn nope" data-act="dismiss">Not interested</button>{% endmacro %}
 {% macro link(url, label, cls="btn") %}{% if url %}<a class="{{ cls }}" href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ label }}</a>{% endif %}{% endmacro %}
 {% macro company_info(ci, contact_email='') %}
@@ -118,7 +118,7 @@ details.section>summary{font-size:17px}
 h2{scroll-margin-top:120px}
 footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 12px 0}
 body{padding:0 0 72px}
-@media (min-width:600px){.stats{grid-template-columns:repeat(4,1fr)}}
+@media (min-width:600px){.stats{grid-template-columns:repeat(4,1fr)}}@media (min-width:900px){.stats{grid-template-columns:repeat(7,1fr)}}
 </style>
 </head>
 <body data-today="{{ d.today_iso }}">
@@ -130,6 +130,9 @@ body{padding:0 0 72px}
     <div class="stat"><b>{{ d.counts.new_24h }}</b><span>new in last 24h</span></div>
     <div class="stat"><b>{{ d.counts.leads }}</b><span>active leads</span></div>
     <div class="stat"><b>{{ d.counts.followups_due }}</b><span>follow-ups due{% if d.counts.leads_due %} ({{ d.counts.leads_due }} leads){% endif %}</span></div>
+    <div class="stat"><b>{{ d.counts.ready }}</b><span>ready to send (have email)</span></div>
+    <div class="stat"><b>{{ d.counts.needs_email }}</b><span>leads need an email</span></div>
+    <div class="stat"><b>{{ d.counts.stale }}</b><span>stale (&gt;7d, no email)</span></div>
   </div>
 </header>
 <div class="fbar" id="fbar" role="search">
@@ -139,7 +142,11 @@ body{padding:0 0 72px}
   </div>
   <div class="fcount"><span id="f-count" aria-live="polite"></span><button type="button" class="fbtn" id="f-reset">Reset filters</button></div>
   <div class="fpresets">
-    <button type="button" class="fbtn" id="f-ready" title="Has contact/hiring email and follow-up due or overdue">Ready to send</button>
+    <button type="button" class="fbtn" id="f-ready" title="Has contact email and a follow-up due or overdue">Ready to send</button>
+    <button type="button" class="fbtn" data-preset="needs" title="Active leads with no contact email yet">Needs email</button>
+    <button type="button" class="fbtn" data-preset="fresh" title="Leads qualified in the last 7 days">Fresh (7d)</button>
+    <button type="button" class="fbtn" data-preset="stale" title="Qualified over 7 days ago with no email: candidates to hide / prune">Stale backlog</button>
+    <button type="button" class="fbtn" data-preset="hidestale" title="Hide stale no-email leads everywhere">Hide stale</button>
   </div>
   <div id="f-panel" hidden>
     <label>Region<select id="f-region"><option value="">All</option>{% for k, v in d.track_label.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
@@ -164,7 +171,7 @@ body{padding:0 0 72px}
 <section class="card{% if L.due_count %} due{% endif %}" id="lead-{{ L.id[:12] }}"{{ fattrs(L) }}>
   <div class="co">{{ L.company }}</div>
   <div class="title">{{ L.title }}</div>
-  <div class="meta">{{ L.location or 'Location not listed' }} · score <b>{{ '%.3f' | format(L.score) }}</b> · posted {{ L.posted }}</div>
+  <div class="meta">{{ L.location or 'Location not listed' }} · score <b>{{ '%.3f' | format(L.score) }}</b> · posted {{ L.posted }}{% if L.qualified_at %} · lead {{ L.qualified_at }}{% if L.stale %} <span class="pill soon">stale / no email</span>{% endif %}{% endif %}</div>
   <div>
     {% if L.overdue %}<span class="pill due">follow-up overdue</span>{% elif L.due_count %}<span class="pill due">follow-up due today</span>
     {% elif L.next_touch %}<span class="pill soon">next touch {{ L.next_touch.when }}</span>{% endif %}
@@ -301,7 +308,7 @@ body{padding:0 0 72px}
   var doc = document.documentElement;
   doc.className = doc.className.replace(/\bnojs\b/, "js");
   var KEY = "jobdash.filters.v1", DKEY = "jobdash.dismissed.v1", AKEY = "jobdash.approve.v1";
-  var DEF = {q: "", region: "", cat: "", em: "", fu: "", po: "", sort: "score", sc: "0", place: "", hide: true};
+  var DEF = {q: "", region: "", cat: "", em: "", fu: "", po: "", sort: "score", sc: "0", place: "", hide: true, preset: "", hidestale: false};
   function load(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   var st = Object.assign({}, DEF, load(KEY, {}));
@@ -321,6 +328,9 @@ body{padding:0 0 72px}
         cat: " " + (el.getAttribute("data-cat") || "") + " ", em: el.getAttribute("data-em"),
         fu: el.getAttribute("data-fu"), sc: parseFloat(el.getAttribute("data-sc")) || 0, po: po,
         age: po ? Math.floor((today - Date.parse(po)) / 864e5) : null, due: el.getAttribute("data-due") || "",
+        ce: el.getAttribute("data-ce") === "1", lage: parseInt(el.getAttribute("data-age"), 10) || 0,
+        stale: el.getAttribute("data-stale") === "1", ready: el.getAttribute("data-ready") === "1",
+        lead: box.id === "leads-list",
         btn: el.querySelector('[data-act="dismiss"]')});
     });
   });
@@ -357,10 +367,17 @@ body{padding:0 0 72px}
       cards.filter(function (c) { return c.box === box; }).sort(f).forEach(function (c) { box.appendChild(c.el); });
     });
   }
+  function matchPreset(c) {
+    if (!st.preset) return true;
+    if (st.preset === "needs") return c.lead && !c.ce;
+    if (st.preset === "fresh") return c.lead && c.lage <= 7;
+    if (st.preset === "stale") return c.lead && c.stale;
+    return true;
+  }
   function words(s) { return s.toLowerCase().split(/\s+/).filter(Boolean); }
   function matchFu(c) {
     if (!st.fu) return true;
-    if (st.fu === "ready") return (c.fu === "today" || c.fu === "overdue") && c.em === "1";
+    if (st.fu === "ready") return c.ready || ((c.fu === "today" || c.fu === "overdue") && c.ce);
     if (st.fu === "due") return c.fu === "today" || c.fu === "overdue";
     return c.fu === st.fu;
   }
@@ -377,7 +394,8 @@ body{padding:0 0 72px}
         (readyMode ? true : (!st.em || c.em === st.em)) &&
         matchFu(c) &&
         c.sc + 1e-9 >= min &&
-        (!days || (c.age !== null && c.age <= days));
+        (!days || (c.age !== null && c.age <= days)) &&
+        matchPreset(c) && !(st.hidestale && c.stale);
       if (ok && d && st.hide) { ok = false; hiddenDismissed++; }
       c.el.hidden = !ok;
       c.el.classList.toggle("dismissed", d);
@@ -394,7 +412,7 @@ body{padding:0 0 72px}
         e.hidden = n > 0;
       });
     });
-    var active = ["region", "cat", "em", "fu", "po", "place"].filter(function (k) { return st[k]; }).length +
+    var active = ["region", "cat", "em", "fu", "po", "place", "preset"].filter(function (k) { return st[k]; }).length + (st.hidestale ? 1 : 0) +
       (min > 0 ? 1 : 0) + (st.q ? 1 : 0) + (st.hide ? 0 : 1);
     $("f-badge").textContent = active ? " (" + active + ")" : "";
     $("f-toggle").classList.toggle("on", active > 0);
@@ -403,6 +421,10 @@ body{padding:0 0 72px}
       (hiddenDismissed ? " · " + hiddenDismissed + " not-interested hidden" : "");
     var readyBtn = $("f-ready");
     if (readyBtn) readyBtn.classList.toggle("on", isReadyFilter());
+    Array.prototype.forEach.call(document.querySelectorAll("[data-preset]"), function (b) {
+      var p = b.getAttribute("data-preset");
+      b.classList.toggle("on", p === "hidestale" ? !!st.hidestale : st.preset === p);
+    });
     save(KEY, st);
     refreshApproveUI();
   }
@@ -422,6 +444,15 @@ body{padding:0 0 72px}
     st = Object.assign({}, DEF, {em: "1", fu: "ready", hide: st.hide});
     toUI();
     apply();
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-preset]"), function (b) {
+    b.addEventListener("click", function () {
+      var p = b.getAttribute("data-preset");
+      if (p === "hidestale") { st.hidestale = !st.hidestale; }
+      else if (st.preset === p) { st.preset = ""; }
+      else { st = Object.assign({}, DEF, {preset: p, hide: st.hide, hidestale: st.hidestale}); toUI(); }
+      apply();
+    });
   });
   var panel = $("f-panel"), tog = $("f-toggle");
   function setPanel(open) { panel.hidden = !open; tog.setAttribute("aria-expanded", open ? "true" : "false"); }

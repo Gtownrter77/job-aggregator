@@ -195,6 +195,10 @@ Use a different config file with `-c path/to/config.yaml` or `AGGREGATOR_CONFIG=
 python -m aggregator snapshot                 # -> dist/Job-Dashboard-YYYY-MM-DD.html
 python -m aggregator snapshot --out my.html
 python -m aggregator snapshot --publish       # also push it to GitHub Pages (gh-pages branch)
+python -m aggregator prune-stale --before 2026-10-19 --keep-score 0.55
+                                      # close old no-email leads cluttering the due queue
+python -m aggregator repair-drafts    # rewrite drafts that invent a wrong employer name
+
 ```
 
 One self-contained HTML file (inline CSS and one small inline script, no external fonts or scripts) you can
@@ -211,7 +215,8 @@ say "I just applied" while the lead has no sent follow-up show a small warning. 
 clickable; postings appear as 300-character excerpts. No secrets are baked into the public HTML.
 
 **Filters (on the phone, no server).** A sticky bar at the top has a search box (title + company),
-a live "N of M jobs match" count, **Reset filters**, a **Ready to send** preset (has
+a live "N of M jobs match" count, **Reset filters**, triage presets (**Ready to send**,
+**Needs email**, **Fresh (7d)**, **Stale backlog**, **Hide stale**), a **Ready to send** filter (has
 hiring/contact email AND follow-up due/overdue), and a collapsible **Filters** panel: region
 (Atlanta / Remote AI / all), category (construction/PM, roofing/exteriors, sales, trades/field,
 engineering, AI, other; derived from title keywords, a job can be in several), has a hiring email
@@ -614,6 +619,12 @@ part of this repo. Without any resume files the app still works (scores are 0 un
 you add a profile or set `scoring.profile`).
 
 ## Scheduling
+
+### cron-free scheduler (Cursor box / no apt cron)
+
+When system cron cannot be installed (e.g. apt mirror 500s), `scripts/boot.sh` starts
+`scripts/scheduler-bg.sh` instead — same weekday 07:19 / 11:19 / 16:19 America/New_York
+slots as the crontab block. Manual: `./scripts/start-scheduler.sh`. See `docs/AUTOSTART.md`.
 
 ### cron (macOS / Linux)
 

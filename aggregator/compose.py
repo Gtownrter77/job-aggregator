@@ -145,20 +145,30 @@ def details(job: dict, cfg: dict) -> dict:
 _PROFILE_CACHE: dict = {}
 
 
-def _profile_accomplishments(path: str) -> list[dict]:
-    """Corroborated accomplishments from resumes/profile.json (items with a `use` sentence
-    and no `confirm` flag). Low-confidence claims are never used in drafts."""
+def _profile_accomplishments(path: str, confirm_allow: list[str] | None = None) -> list[dict]:
+    """Corroborated accomplishments from resumes/profile.json (items with a `use` sentence).
+    Items with `confirm: true` are skipped unless their item text matches applicant.confirm_allow."""
     p = resolve(path)
     if not p.exists():
         return []
-    key = (str(p), p.stat().st_mtime)
+    allow = [x.lower() for x in (confirm_allow or []) if x]
+    key = (str(p), p.stat().st_mtime, tuple(allow))
     if key not in _PROFILE_CACHE:
         data = json.loads(p.read_text())
-        _PROFILE_CACHE.clear()
-        _PROFILE_CACHE[key] = [
-            {"text": a["use"], "tags": set((a.get("tags") or "").lower().split()), "versions": a.get("versions", 0)}
-            for a in data.get("accomplishments") or [] if a.get("use") and not a.get("confirm")
-        ]
+        # drop stale keys for this path
+        for k in [k for k in list(_PROFILE_CACHE) if isinstance(k, tuple) and k and k[0] == str(p)]:
+            _PROFILE_CACHE.pop(k, None)
+        out = []
+        for a in data.get("accomplishments") or []:
+            if not a.get("use"):
+                continue
+            if a.get("confirm"):
+                item = (a.get("item") or a["use"]).lower()
+                if not any(x in item for x in allow):
+                    continue
+            out.append({"text": a["use"], "tags": set((a.get("tags") or "").lower().split()),
+                        "versions": a.get("versions", 0)})
+        _PROFILE_CACHE[key] = out
     return _PROFILE_CACHE[key]
 
 
@@ -169,7 +179,7 @@ def _applicant(cfg):
     sig = [name or "[[your name]]"] + [x.strip() for x in (fu.get("applicant_phone"), fu.get("applicant_email")) if x and x.strip()]
     accs = [{"text": x.strip().rstrip("."), "tags": set(), "versions": 0} for x in a.get("accomplishments") or [] if x]
     if a.get("profile_file"):
-        accs += _profile_accomplishments(a["profile_file"])
+        accs += _profile_accomplishments(a["profile_file"], a.get("confirm_allow") or [])
     return {
         "name": name or "[[your name]]",
         "signature": "\n".join(sig),
@@ -352,10 +362,11 @@ def template_sequence(job: dict, lead: dict, cfg: dict) -> list[dict]:
 # so the signature (name/phone/email from config) is always exact.
 
 # Claims that are NOT confirmed and must never appear in a draft, whatever the model says.
+# PMP / LEED / $16M+ revenue are confirmed OK by Ryan (2026-10). Still block unverified claims.
 FORBIDDEN_CLAIMS = re.compile(
-    r"\bPMP\b|project management professional|\bLEED\b|ohio university|\bbachelor'?s?\b|\bB\.?S\.? (degree|in)\b|"
-    r"\bmaster'?s degree\b|\b14 (project managers|PMs)\b|supervised 14|\$\s?1[36](\.\d+)?\s?(m\b|mm\b|million)|"
-    r"\b1[36](\.\d+)? million\b|\$\s?16,?000,?000|\$\s?13,?000,?000|\bHaag\b|\bveteran\b",
+    r"ohio university|\bbachelor'?s?\b|\bB\.?S\.? (degree|in)\b|"
+    r"\bmaster'?s degree\b|\b14 (project managers|PMs)\b|supervised 14|"
+    r"\bHaag\b|\bveteran\b",
     re.I)
 # Claims of AI/ML work experience (only blocked when fit is "transferable": career-changers have none to claim).
 _AI_EXPERIENCE_CLAIM = re.compile(
@@ -373,7 +384,9 @@ Never desperate, never sarcastic, no exclamation-mark spam.
 TRUTH RULES (critical):
 - Use ONLY the applicant facts provided. Never invent credentials, degrees, certifications, employers, job titles,
   numbers, metrics, tools or experience. If a fact is not listed, do not claim it.
-- Never mention PMP, LEED, a bachelor's degree, Ohio University, supervising 14 project managers, or revenue figures.
+- Never invent a bachelor's degree, Ohio University, supervising 14 project managers, or unverified revenue.
+- PMP, LEED, and "$16M+ revenue generated for employers" ARE confirmed facts when listed in APPLICANT FACTS — use them when relevant.
+- The employer is EXACTLY the COMPANY named below. Never substitute, invent, or rename the employer (no "Eastern Commercial" when the company is something else).
 - Do not claim to have already spoken with anyone, been referred, or met the reader.
 - If FIT is "transferable", do NOT claim experience in the posting's field; present it honestly as transferable
   strengths or a deliberate career move.
@@ -752,6 +765,146 @@ def _norm_num(n: str) -> str:
     return n.replace(",", "").rstrip(".")
 
 
+
+# Past employers / project names that may appear in accomplishment sentences (not "wrong company").
+_RESUME_ORGS = {
+    "crist", "academy", "1oak", "guru", "jonquil", "trident", "shelton", "palma", "secs", "southeastern",
+    "chateau", "elan", "truist", "mercedes", "benz", "hogan", "cora", "texas", "sugar", "mill",
+    "jetblue", "clarence", "brown", "stephenson", "auberge", "mosaic", "alfred",
+}
+_CO_SUFFIX_WORD = re.compile(
+    r"\b(Commercial|Contracting|Exteriors|Industries|Solutions|Technologies|Technology|Corp|Corporation|"
+    r"Inc|LLC|Group|Builders|Partners|Associates|Services|Company|Limited|Roofing|Remodeling|Construction|"
+    r"Homes|Home\s+Services|Restoration|Waterproofing)\b"
+)
+# Match employer phrases on one line only (\s across newlines caused "Excellence\nHello" false hits).
+_AT_EMPLOYER = re.compile(
+    r"\b(?:at|to|with|for)[^\S\n]+(?!your[^\S\n]+team\b)(?P<name>"
+    r"(?:[A-Z][A-Za-z0-9&']+)(?:[^\S\n]+(?:&|and|[A-Z][A-Za-z0-9&']+)){0,4})"
+)
+_ROLE_OR_GENERIC = {
+    "role", "roles", "position", "opportunity", "project", "projects", "management", "sales",
+    "expertise", "leadership", "team", "doorstep", "success", "excellence", "track", "years",
+    "coordination", "technician", "technicians", "application", "discussion", "finish", "safety",
+    "qa", "qc", "manager", "managers", "representative", "director", "coordinator", "foreman",
+    "superintendent", "engineer", "specialist", "consultant", "operations", "installation",
+    "volume", "commission", "based", "heights", "tower", "communication", "results", "record",
+    "proven", "canvassing", "hello", "thanks", "thank", "hi", "dear", "best", "regards",
+    "plant", "focus", "posting", "crews", "adversity", "environments", "turbulent", "large",
+    "maintenance", "field", "data", "center", "facilities", "associate", "staff", "branch",
+    "experienced", "experience", "candidate", "seek", "seeks", "applying", "applies", "here",
+    "well", "process", "recruiting", "deadlines", "meet", "skills", "professional", "leader",
+    "captain", "trac", "auction", "jobber", "acculynx", "generator", "i", "ve", "what", "my",
+    "and", "the", "a", "an", "our", "your", "this", "that", "last", "note", "short", "how",
+    "help", "i", "id", "im", "ive", "tropical", "storm", "restoration", "residential",
+    "commissionbased", "high", "quality", "leads", "new", "heights", "aci", "ii", "iii",
+}
+_GREETING_TOKENS = {
+    "hello", "hi", "hey", "dear", "thanks", "thank", "regards", "best", "sincerely", "cheers",
+}
+_GEO_OR_FILLER = {
+    "atlanta", "midtown", "downtown", "marietta", "smyrna", "conyers", "georgia", "ga", "usa",
+    "metro", "county", "counties", "anniston", "alabama", "al", "fulton", "cobb", "paulding",
+    "bartow", "cherokee", "powder", "springs", "south", "north", "east", "west", "llc", "inc",
+    "corp", "two", "companies", "complexities", "technical", "inspection", "work", "business",
+    "growth", "civil", "site", "delivery", "engineering", "forensics", "customer", "service",
+    "junk", "removal", "wildlife", "repair", "lead", "in", "field", "services", "greyhound",
+    "depot",
+}
+
+
+def foreign_employer_problems(subject: str, body: str, job: dict) -> list[str]:
+    """Reject drafts that invent or substitute a different employer name (e.g. 'Eastern Commercial'
+    when the job is at Iugis Construction)."""
+    real = display_company(job.get("company"))
+    raw = (job.get("company") or "").strip()
+    if not real or real == "your team":
+        return []
+    allowed = {re.sub(r"[^a-z0-9]+", "", real.lower())}
+    if raw:
+        allowed.add(re.sub(r"[^a-z0-9]+", "", raw.lower()))
+    firsts = set()
+    for a in (real, raw):
+        toks = re.findall(r"[a-z0-9]+", (a or "").lower())
+        if toks and toks[0] not in {"the", "a", "an"}:
+            firsts.add(toks[0])
+    scrubbed = f"{subject or ''}\n{body or ''}"
+    for a in sorted({real, raw}, key=len, reverse=True):
+        if a:
+            scrubbed = re.sub(re.escape(a), " ", scrubbed, flags=re.I)
+    probs: list[str] = []
+
+    def _consider(name: str) -> None:
+        # cut at sentence punctuation so "Commercial. Eastern" cannot glue together
+        name = re.split(r"[.!?;:\n]", name, maxsplit=1)[0].strip().rstrip(", ")
+        if not name:
+            return
+        toks = re.findall(r"[A-Za-z0-9]+", name)
+        if not toks:
+            return
+        low = [t.lower() for t in toks]
+        low_set = set(low)
+        if low_set & _GREETING_TOKENS:
+            return
+        # possessive / location phrases: "Atlanta's", "Anniston's Greyhound Depot"
+        if "s" in low and any(t in _GEO_OR_FILLER for t in low):
+            return
+        if sum(1 for t in low if t in _GEO_OR_FILLER) >= 1 and not (
+            low[-1] in {"commercial", "contracting", "exteriors", "industries", "solutions", "roofing",
+                        "construction", "remodeling", "restoration", "builders", "group", "company"}
+            and len([t for t in low if t not in _GEO_OR_FILLER | {"s"}]) >= 2
+        ):
+            return
+        if any(t in _ROLE_OR_GENERIC for t in low):
+            # allow only if the LAST token is a real company suffix word
+            if low[-1] not in {
+                "commercial", "contracting", "exteriors", "industries", "solutions", "technologies",
+                "technology", "corp", "corporation", "inc", "llc", "group", "builders", "partners",
+                "associates", "services", "company", "limited", "roofing", "remodeling", "construction",
+                "homes", "restoration", "waterproofing",
+            }:
+                return
+        # company-like: last token is a known suffix, OR 2+ tokens with none roleish
+        last_is_co = low[-1] in {
+            "commercial", "contracting", "exteriors", "industries", "solutions", "technologies",
+            "technology", "corp", "corporation", "inc", "llc", "group", "builders", "partners",
+            "associates", "services", "company", "limited", "roofing", "remodeling", "construction",
+            "homes", "restoration", "waterproofing",
+        }
+        if not last_is_co:
+            if len(toks) < 2:
+                return
+            if any(t in _ROLE_OR_GENERIC for t in low):
+                return
+        key = re.sub(r"[^a-z0-9]+", "", name.lower())
+        if any(key == a or key.startswith(a) or a.startswith(key) for a in allowed if a):
+            return
+        if low_set & firsts:
+            return
+        if low_set & _RESUME_ORGS:
+            return
+        if len(toks) == 1 and low[0] in {"construction", "roofing", "remodeling", "sales",
+                                         "llc", "inc", "corp", "company", "group", "services"}:
+            return
+        # locations / filler phrases (Midtown Atlanta, Anniston Greyhound Depot, Corp USA)
+        if low_set <= _GEO_OR_FILLER or (len(toks) <= 3 and all(t in _GEO_OR_FILLER or t in _ROLE_OR_GENERIC for t in low)):
+            return
+        # "Field Services" / "Customer Service" style: suffix alone with a generic first word
+        if last_is_co and len(toks) == 2 and low[0] in _ROLE_OR_GENERIC | _GEO_OR_FILLER:
+            return
+        probs.append(f"wrong company '{name}' (job is {real})")
+
+    for m in _AT_EMPLOYER.finditer(scrubbed):
+        _consider(m.group("name"))
+    for m in re.finditer(
+            r"\b(?P<name>[A-Z][A-Za-z0-9&']+(?:[^\S\n]+[A-Z][A-Za-z0-9&']+){0,3})(?:'s|\u2019s)[^\S\n]+"
+            r"(?:focus|commitment|dedication|reputation|success|team|role|posting)\b",
+            scrubbed):
+        _consider(m.group("name"))
+    return list(dict.fromkeys(probs))
+
+
+
 def validate_draft(subject: str, body: str, job: dict, cfg: dict, facts: dict, fit: str,
                    min_words: int = 35, max_words: int = 125) -> list[str]:
     """Problems with one model-written touch (empty list = OK). `body` = paragraphs only."""
@@ -788,6 +941,7 @@ def validate_draft(subject: str, body: str, job: dict, cfg: dict, facts: dict, f
     if bad:
         probs.append(f"ungrounded number(s) {bad[:3]}")
     probs += location_problems(subject, body, job, cfg, facts)
+    probs += foreign_employer_problems(subject, body, job)
     m = _MANGLED.search(both)
     if m:
         probs.append(f"typo '{m.group(0)}'")

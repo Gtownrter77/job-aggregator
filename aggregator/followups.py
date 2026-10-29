@@ -201,3 +201,66 @@ def queue(conn, today: date | None = None) -> dict:
 
 def qualified_ids(conn) -> set[str]:
     return {r[0] for r in conn.execute("SELECT job_id FROM leads WHERE status <> 'closed'")}
+
+
+def prune_stale(conn, *, before: str, require_no_email: bool = True,
+                keep_min_score: float | None = None, dry_run: bool = False) -> dict:
+    """Skip unsent drafts and close leads that clutter the queue.
+
+    Default target: leads qualified on/before `before` (YYYY-MM-DD) with no contact email.
+    High-scoring leads (score >= keep_min_score) are kept even without email.
+    Never touches sent/approved/replied rows' history beyond skipping remaining drafts.
+    """
+    where = ["l.status = 'active'", "date(l.qualified_at) <= date(?)"]
+    params: list = [before]
+    if require_no_email:
+        where.append("(l.contact_email IS NULL OR trim(l.contact_email) = '')")
+    if keep_min_score is not None:
+        where.append("(j.score IS NULL OR j.score < ?)")
+        params.append(float(keep_min_score))
+    sql = ("SELECT l.job_id, l.qualified_at, l.contact_email, j.company, j.title, j.score "
+           "FROM leads l JOIN jobs j ON j.id = l.job_id WHERE " + " AND ".join(where) +
+           " ORDER BY l.qualified_at, j.company")
+    rows = [dict(r) for r in conn.execute(sql, params)]
+    if dry_run:
+        return {"would_close": len(rows), "jobs": rows, "dry_run": True}
+    now = _now()
+    closed = 0
+    skipped = 0
+    with conn:
+        for r in rows:
+            cur = conn.execute(
+                "UPDATE followups SET status='skipped', updated_at=? "
+                "WHERE job_id=? AND status IN ('draft','approved')",
+                (now, r["job_id"]),
+            )
+            skipped += cur.rowcount
+            conn.execute("UPDATE leads SET status='closed', updated_at=? WHERE job_id=?",
+                         (now, r["job_id"]))
+            closed += 1
+    return {"closed": closed, "drafts_skipped": skipped, "before": before,
+            "require_no_email": require_no_email, "keep_min_score": keep_min_score}
+
+
+def find_wrong_company_job_ids(conn) -> list[str]:
+    """Job ids whose unedited drafts invent a different employer name."""
+    from .compose import foreign_employer_problems
+
+    out = []
+    for job in conn.execute(
+        "SELECT j.* FROM jobs j JOIN leads l ON l.job_id=j.id "
+        "WHERE l.status='active' AND EXISTS ("
+        "  SELECT 1 FROM followups f WHERE f.job_id=j.id AND f.status='draft' AND f.edited=0)"
+    ):
+        job = dict(job)
+        bad = False
+        for f in conn.execute(
+            "SELECT subject, body FROM followups WHERE job_id=? AND status='draft' AND edited=0",
+            (job["id"],),
+        ):
+            if foreign_employer_problems(f["subject"] or "", f["body"] or "", job):
+                bad = True
+                break
+        if bad:
+            out.append(job["id"])
+    return out

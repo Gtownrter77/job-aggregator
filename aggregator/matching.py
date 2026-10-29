@@ -91,6 +91,22 @@ class TrackMatcher:
         return self.hits(title) > 0
 
 
+# Title keywords that strongly match Ryan's construction / field / sales background.
+# Applied as a small additive boost after TF-IDF so true fits rise above generic hits.
+_TITLE_BOOST = [
+    (re.compile(r"\b(roof(ing|er)?|superintendent|project\s*(manager|coordinator|engineer)|"
+                r"field\s*(pm|manager|ops|operations)|estimator|canvass|outside\s*sales|"
+                r"construction\s*(manager|sales|pm)|remodel|exteriors?|foreman)\b", re.I), 0.025),
+    (re.compile(r"\b(sales\s*(rep|representative|specialist)|business\s*development|"
+                r"account\s*(executive|manager)|crew\s*lead)\b", re.I), 0.015),
+]
+
+
+def _title_boost(title: str) -> float:
+    t = title or ""
+    return sum(w for rx, w in _TITLE_BOOST if rx.search(t))
+
+
 def score_jobs(cfg: dict, jobs: list[dict]) -> list[float]:
     """Relevance of each job vs the resume profile (+ scoring.profile, roles). 0..1. All zeros if no profile."""
     sc = cfg["scoring"]
@@ -100,10 +116,13 @@ def score_jobs(cfg: dict, jobs: list[dict]) -> list[float]:
     docs = [_doc(j) for j in jobs]
     if sc.get("method") == "embeddings":
         out = embedding_scores(profile, docs, sc["embedding_model"])
-        if out is not None:
-            return out
-        log.warning("sentence-transformers not installed; falling back to TF-IDF")
-    return tfidf_scores(profile, docs)
+        if out is None:
+            log.warning("sentence-transformers not installed; falling back to TF-IDF")
+            out = tfidf_scores(profile, docs)
+    else:
+        out = tfidf_scores(profile, docs)
+    # Cap so boosted scores stay in a sensible 0..1 band for the UI.
+    return [min(1.0, float(s) + _title_boost(j.get("title") or "")) for s, j in zip(out, jobs)]
 
 
 def rescore_all(cfg: dict, conn) -> int:
